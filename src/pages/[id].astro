@@ -1,0 +1,12 @@
+---
+/** A painting's own address: the wall with that painting already open. */
+import Wall from "@/components/Wall.astro";
+import { getPaintings } from "@/lib/paintings";
+
+export const getStaticPaths = async () =>
+  (await getPaintings()).map((p) => ({ params: { id: p.id } }));
+
+const { id } = Astro.params;
+---
+
+<Wall open={id} />

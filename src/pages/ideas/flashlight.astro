@@ -1,0 +1,621 @@
+---
+/**
+ * flashlight — the museum after hours.
+ * Total darkness; the cursor is a warm, slightly unsteady light that shows
+ * the painting only where you point it. Linger near something worth seeing
+ * and a note surfaces at the edge of the light. Click (or L) to bring the
+ * gallery lights up. Scroll / arrows for the next room — the lights go out.
+ */
+import { Picture } from "astro:assets";
+import Idea from "@/layouts/Idea.astro";
+import { getPaintings } from "@/lib/paintings";
+
+const paintings = await getPaintings();
+const roman = (n: number) => ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"][n - 1] ?? String(n);
+---
+
+<Idea title="Flashlight" background="#000">
+  <link slot="head" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&display=swap" />
+
+  <main class="room" aria-roledescription="carousel" aria-label="Paintings">
+    {
+      paintings.map((p, i) => {
+        const aspect = p.image.width / p.image.height;
+        return (
+          <figure
+            class:list={["plate", { "is-current": i === 0 }]}
+            data-index={i}
+            data-w={p.image.width}
+            data-h={p.image.height}
+            data-details={JSON.stringify(p.details)}
+            aria-hidden={i === 0 ? "false" : "true"}
+          >
+            <Picture
+              src={p.image}
+              alt={`${p.title}, ${p.artist}, ${p.year}`}
+              widths={[960, 1440, 1920, 2560, 3200]}
+              sizes={`max(100vw, ${Math.ceil(aspect * 100)}vh)`}
+              formats={["avif", "webp"]}
+              quality={72}
+              loading="eager"
+              decoding="async"
+              fetchpriority={i === 0 ? "high" : "low"}
+            />
+          </figure>
+        )
+      })
+    }
+  </main>
+
+  <div class="torch" aria-hidden="true">
+    <div class="glow"></div>
+    <div class="dark"></div>
+  </div>
+  <div class="blackout" aria-hidden="true"></div>
+
+  <p class="note" aria-live="polite"><span></span></p>
+
+  <section class="label" aria-live="polite">
+    {
+      paintings.map((p, i) => (
+        <div class:list={["card", { "is-current": i === 0 }]} data-index={i}>
+          <p class="room-no">
+            Room {roman(i + 1)} <span>of {roman(paintings.length)}</span>
+          </p>
+          <h1>{p.title}</h1>
+          <p class="by">
+            {p.artist}, {p.year}
+          </p>
+          <p class="small">
+            {p.medium}. {p.location}.
+          </p>
+          <p class="small credit">
+            <span>{p.rights}. Image via {p.source}.</span>
+            <a href={p.original} target="_blank" rel="noopener">
+              See the full-resolution original
+            </a>
+          </p>
+        </div>
+      ))
+    }
+  </section>
+
+  <p class="hint" aria-hidden="true"><span class="hint-dark">Click to bring up the lights</span><span class="hint-lit">Click to dim · scroll for the next room</span></p>
+
+  <style is:global>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    body {
+      cursor: none;
+      -webkit-font-smoothing: antialiased;
+    }
+    body.is-lit {
+      cursor: default;
+    }
+  </style>
+
+  <style>
+    :root {
+      --ink: #eadfcb;
+      --amber: #e9b979;
+    }
+    .room {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    .plate {
+      position: absolute;
+      inset: 0;
+      margin: 0;
+      visibility: hidden;
+    }
+    .plate.is-current {
+      visibility: visible;
+    }
+    .plate :global(picture),
+    .plate :global(img) {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .plate :global(img) {
+      object-fit: cover;
+    }
+
+    /* The torch: one oversized layer (2× the viewport) carried by transform,
+       so moving the light never repaints the painting. */
+    .torch {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 200vw;
+      height: 200vh;
+      pointer-events: none;
+      will-change: transform, opacity;
+      transition: opacity 2400ms cubic-bezier(0.5, 0, 0.2, 1);
+    }
+    .torch > div {
+      position: absolute;
+      inset: 0;
+    }
+    .glow {
+      mix-blend-mode: soft-light;
+      background: var(--glow-gradient);
+    }
+    .dark {
+      background: var(--dark-gradient);
+    }
+    body.is-lit .torch {
+      animation: lights-up 2600ms cubic-bezier(0.3, 0, 0.2, 1) forwards;
+    }
+    body.was-lit:not(.is-lit) .torch {
+      animation: lights-down 1300ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
+    }
+    /* Old gallery lights: a hesitation, a stutter, then they come up. */
+    @keyframes lights-up {
+      0% {
+        opacity: 1;
+      }
+      9% {
+        opacity: 0.62;
+      }
+      13% {
+        opacity: 0.92;
+      }
+      19% {
+        opacity: 0.5;
+      }
+      24% {
+        opacity: 0.74;
+      }
+      100% {
+        opacity: 0;
+      }
+    }
+    @keyframes lights-down {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    .blackout {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* A note at the edge of the light. */
+    .note {
+      position: fixed;
+      left: 0;
+      top: 0;
+      margin: 0;
+      pointer-events: none;
+      color: var(--ink);
+      font-family: "IM Fell English", Georgia, serif;
+      font-style: italic;
+      font-size: 19px;
+      line-height: 1.25;
+      max-width: 260px;
+      opacity: 0;
+      transition: opacity 900ms ease;
+      text-shadow: 0 0 18px #000, 0 0 4px #000;
+    }
+    .note.is-on {
+      opacity: 0.86;
+    }
+    .note::before {
+      content: "";
+      display: block;
+      width: 28px;
+      height: 1px;
+      margin-bottom: 10px;
+      background: var(--amber);
+      opacity: 0.6;
+    }
+    body.is-lit .note {
+      opacity: 0;
+    }
+
+    /* The wall label: only once the lights are up. */
+    .label {
+      position: fixed;
+      left: 44px;
+      bottom: 40px;
+      z-index: 5;
+      color: var(--ink);
+      font-family: "IM Fell English", Georgia, serif;
+      pointer-events: none;
+    }
+    .card {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: min(520px, 80vw);
+      opacity: 0;
+      transform: translateY(10px);
+      transition:
+        opacity 700ms ease,
+        transform 900ms ease;
+      text-shadow: 0 1px 14px rgb(0 0 0 / 0.7);
+    }
+    body.is-lit .card.is-current {
+      opacity: 1;
+      transform: none;
+      transition:
+        opacity 1400ms ease 1500ms,
+        transform 1800ms cubic-bezier(0.2, 0.7, 0.1, 1) 1500ms;
+      pointer-events: auto;
+    }
+    .room-no {
+      margin: 0 0 14px;
+      font-family: "IM Fell English SC", Georgia, serif;
+      font-size: 14px;
+      letter-spacing: 0.12em;
+      color: var(--amber);
+    }
+    .room-no span {
+      opacity: 0.6;
+    }
+    h1 {
+      margin: 0;
+      font-weight: 400;
+      font-style: italic;
+      font-size: clamp(32px, 3.3vw, 48px);
+      line-height: 1.02;
+    }
+    .by {
+      margin: 8px 0 14px;
+      font-size: 19px;
+    }
+    .small {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.45;
+      opacity: 0.7;
+    }
+    .credit {
+      display: flex;
+      flex-direction: column;
+    }
+    .credit a {
+      align-self: flex-start;
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px solid rgb(233 185 121 / 0.45);
+      transition: border-color 300ms;
+    }
+    .credit a:hover,
+    .credit a:focus-visible {
+      border-color: var(--amber);
+      outline: none;
+    }
+    .label::before {
+      content: "";
+      position: fixed;
+      inset: auto 0 0 0;
+      height: 46vh;
+      background: linear-gradient(to top, rgb(0 0 0 / 0.6), transparent);
+      opacity: 0;
+      transition: opacity 900ms ease;
+      pointer-events: none;
+      z-index: -1;
+    }
+    body.is-lit .label::before {
+      opacity: 1;
+      transition: opacity 1800ms ease 1300ms;
+    }
+
+    .hint {
+      position: fixed;
+      right: 44px;
+      bottom: 40px;
+      z-index: 5;
+      margin: 0;
+      font-family: "IM Fell English SC", Georgia, serif;
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      color: var(--ink);
+      opacity: 0;
+      transition: opacity 1500ms ease;
+      pointer-events: none;
+    }
+    body.show-hint .hint {
+      opacity: 0.38;
+    }
+    .hint-lit,
+    body.is-lit .hint-dark {
+      display: none;
+    }
+    body.is-lit .hint-lit {
+      display: inline;
+    }
+
+    @media (max-width: 640px) {
+      .label {
+        left: 22px;
+        bottom: 64px;
+      }
+      .hint {
+        right: auto;
+        left: 22px;
+        bottom: 22px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      body.is-lit .torch,
+      body.was-lit:not(.is-lit) .torch {
+        animation-duration: 300ms;
+        animation-name: none;
+      }
+      body.is-lit .torch {
+        opacity: 0;
+      }
+      body.is-lit .card.is-current {
+        transition-delay: 0ms;
+        transform: none;
+      }
+    }
+  </style>
+
+  <script>
+    const plates = [...document.querySelectorAll<HTMLElement>(".plate")];
+    const cards = [...document.querySelectorAll<HTMLElement>(".card")];
+    const torch = document.querySelector<HTMLElement>(".torch")!;
+    const blackout = document.querySelector<HTMLElement>(".blackout")!;
+    const note = document.querySelector<HTMLElement>(".note")!;
+    const noteText = note.querySelector("span")!;
+    const body = document.body;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    type Detail = { x: number; y: number; note: string };
+
+    /* ---------- the light itself ---------- */
+    // Falloff is built from a soft core plus a wide halo (two gaussians), sampled
+    // into many gradient stops so it reads as light, not as a circle. The
+    // penumbra is tinted warm; far away it settles on a faint ambient — enough
+    // to sense the painting's shapes, as your eyes would after a minute.
+    let radius = 0;
+    const buildLight = () => {
+      radius = Math.round(Math.min(innerWidth, innerHeight) * 0.27);
+      const sigma = radius;
+      const ambient = 0.035;
+      const stops: string[] = [];
+      const glowStops: string[] = [];
+      const N = 28;
+      const reach = sigma * 3;
+      for (let k = 0; k <= N; k++) {
+        const d = (k / N) * reach;
+        const core = Math.exp(-((d / (sigma * 0.62)) ** 2));
+        const halo = Math.exp(-((d / (sigma * 1.3)) ** 2));
+        const lit = Math.min(1, 0.8 * core + 0.3 * halo);
+        const b = ambient + (1 - ambient) * lit;
+        const a = 1 - b;
+        // warm penumbra: tint strongest where the light is half-gone
+        const warmth = 4 * lit * (1 - lit);
+        const r = Math.round(26 * warmth);
+        const g = Math.round(11 * warmth);
+        stops.push(`rgba(${r},${g},0,${a.toFixed(3)}) ${d.toFixed(1)}px`);
+        glowStops.push(`rgba(255,${Math.round(150 + 40 * core)},${Math.round(80 + 40 * core)},${(0.3 * core + 0.08 * halo).toFixed(3)}) ${d.toFixed(1)}px`);
+      }
+      const at = "circle at 50% 50%";
+      torch.style.setProperty("--dark-gradient", `radial-gradient(${at}, ${stops.join(", ")}, rgba(0,0,0,${1 - ambient}) ${reach + 1}px)`);
+      torch.style.setProperty("--glow-gradient", `radial-gradient(${at}, ${glowStops.join(", ")}, transparent ${reach + 1}px)`);
+    };
+    buildLight();
+
+    /* ---------- where things are on screen (object-fit: cover) ---------- */
+    const toScreen = (el: HTMLElement, fx: number, fy: number) => {
+      const iw = Number(el.dataset.w);
+      const ih = Number(el.dataset.h);
+      const s = Math.max(innerWidth / iw, innerHeight / ih);
+      return { x: (innerWidth - iw * s) / 2 + fx * iw * s, y: (innerHeight - ih * s) / 2 + fy * ih * s };
+    };
+    const detailsOf = (el: HTMLElement): Detail[] => JSON.parse(el.dataset.details || "[]");
+
+    /* ---------- motion: the hand that carries it ---------- */
+    const target = { x: innerWidth * 0.5, y: innerHeight * 0.55 };
+    const pos = { ...target };
+    let lastPointer = -1e9;
+    let wanderIdx = 0;
+    let wanderAt = 0;
+    let current = 0;
+    let lit = false;
+    let shown = -1;
+
+    const seed = Math.random() * 100;
+    const flicker = (t: number) => {
+      if (reduced) return 0;
+      const s = t / 1000 + seed;
+      return 0.55 * Math.sin(s * 7.3) * Math.sin(s * 2.1) + 0.3 * Math.sin(s * 17.9 + 1.3) * Math.sin(s * 3.7) + 0.15 * Math.sin(s * 31.1);
+    };
+
+    let prev = performance.now();
+    const loop = (now: number) => {
+      const dt = Math.min(64, now - prev);
+      prev = now;
+
+      // When nobody holds the light, it drifts on its own between the
+      // painting's points of interest, like a guard doing the rounds.
+      if (!lit && now - lastPointer > 5200) {
+        const ds = detailsOf(plates[current]);
+        if (ds.length) {
+          if (now > wanderAt) {
+            wanderIdx = (wanderIdx + 1) % ds.length;
+            wanderAt = now + 4600;
+          }
+          const p = toScreen(plates[current], ds[wanderIdx].x, ds[wanderIdx].y);
+          target.x = p.x;
+          target.y = p.y;
+        }
+      }
+      const follow = now - lastPointer > 5200 ? 900 : 110; // ms time-constant
+      const k = reduced ? 1 : 1 - Math.exp(-dt / follow);
+      pos.x += (target.x - pos.x) * k;
+      pos.y += (target.y - pos.y) * k;
+
+      const f = flicker(now);
+      const scale = 1 + 0.018 * f;
+      torch.style.transform = `translate3d(${pos.x - innerWidth}px, ${pos.y - innerHeight}px, 0) scale(${scale.toFixed(4)})`;
+      (torch.firstElementChild as HTMLElement).style.opacity = (0.85 + 0.15 * f).toFixed(3);
+
+      // a note when the light rests near something
+      let best = -1;
+      let bestD = Infinity;
+      detailsOf(plates[current]).forEach((d, i) => {
+        const p = toScreen(plates[current], d.x, d.y);
+        const dist = Math.hypot(p.x - pos.x, p.y - pos.y);
+        if (dist < bestD) {
+          bestD = dist;
+          best = i;
+        }
+      });
+      const near = bestD < radius * 0.55 && !lit;
+      if (near && best !== shown) {
+        const d = detailsOf(plates[current])[best];
+        const p = toScreen(plates[current], d.x, d.y);
+        noteText.textContent = d.note;
+        // set it just outside the pool of light, on whichever side has room
+        const right = p.x + radius * 0.95 + 270 < innerWidth;
+        note.style.transform = `translate(${right ? p.x + radius * 0.95 : p.x - radius * 0.95 - 260}px, ${Math.min(innerHeight - 90, Math.max(30, p.y - 20))}px)`;
+        note.style.textAlign = right ? "left" : "right";
+        note.classList.add("is-on");
+        shown = best;
+      } else if (!near && shown !== -1) {
+        note.classList.remove("is-on");
+        shown = -1;
+      }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+
+    addEventListener("pointermove", (e) => {
+      target.x = e.clientX;
+      target.y = e.clientY;
+      lastPointer = performance.now();
+      body.classList.remove("show-hint");
+      clearTimeout(hintTimer);
+      hintTimer = window.setTimeout(() => body.classList.add("show-hint"), 2600);
+    });
+    let hintTimer = window.setTimeout(() => body.classList.add("show-hint"), 3500);
+
+    /* ---------- lights ---------- */
+    const setLit = (on: boolean) => {
+      if (on === lit) return;
+      lit = on;
+      body.classList.add("was-lit");
+      body.classList.toggle("is-lit", on);
+      if (on) note.classList.remove("is-on");
+      shown = -1;
+    };
+
+    /* ---------- next room ---------- */
+    let busy = false;
+    const anim = (el: HTMLElement, frames: Keyframe[], ms: number, easing = "ease") =>
+      el.animate(frames, { duration: reduced ? Math.min(ms, 200) : ms, easing, fill: "forwards" }).finished;
+
+    const go = async (next: number) => {
+      const n = plates.length;
+      next = ((next % n) + n) % n;
+      if (next === current || busy) return;
+      busy = true;
+      note.classList.remove("is-on");
+      shown = -1;
+      // the light dies down…
+      await anim(blackout, [{ opacity: 0 }, { opacity: 1 }], lit ? 1100 : 700, "cubic-bezier(.5,0,.75,0)");
+      setLit(false);
+      plates.forEach((el, i) => {
+        el.classList.toggle("is-current", i === next);
+        el.setAttribute("aria-hidden", String(i !== next));
+      });
+      cards.forEach((el, i) => el.classList.toggle("is-current", i === next));
+      current = next;
+      wanderIdx = -1;
+      wanderAt = 0;
+      // skip the lights-down animation; we're already in the dark
+      torch.getAnimations().forEach((a) => a.cancel());
+      body.classList.remove("was-lit");
+      const img = plates[next].querySelector("img");
+      await Promise.all([img?.decode().catch(() => undefined), new Promise((r) => setTimeout(r, 380))]);
+      // …and is struck again: a sputter, then it holds.
+      await anim(
+        blackout,
+        [
+          { opacity: 1 },
+          { opacity: 0.55, offset: 0.12 },
+          { opacity: 0.9, offset: 0.2 },
+          { opacity: 0.35, offset: 0.34 },
+          { opacity: 0.6, offset: 0.42 },
+          { opacity: 0 },
+        ],
+        1300,
+        "linear",
+      );
+      busy = false;
+    };
+
+    let lastWheel = 0;
+    let armed = true;
+    let acc = 0;
+    addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        const now = performance.now();
+        if (now - lastWheel > 180) {
+          armed = true;
+          acc = 0;
+        }
+        lastWheel = now;
+        if (!armed || busy) {
+          armed = false;
+          return;
+        }
+        acc += Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        if (Math.abs(acc) > 24) {
+          armed = false;
+          go(current + Math.sign(acc));
+        }
+      },
+      { passive: false },
+    );
+    addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("a")) return;
+      if (!busy) setLit(!lit);
+    });
+    addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key;
+      if (k === "l" || k === "L" || k === "Enter") {
+        if (!busy) setLit(!lit);
+      } else if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(k)) go(current + 1);
+      else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(k)) go(current - 1);
+      else if (k === "Escape") setLit(false);
+      else return;
+      e.preventDefault();
+    });
+    let touchY: number | null = null;
+    addEventListener("touchstart", (e) => (touchY = e.touches[0].clientY), { passive: true });
+    addEventListener("touchend", (e) => {
+      if (touchY === null) return;
+      const dy = touchY - e.changedTouches[0].clientY;
+      touchY = null;
+      if (Math.abs(dy) > 60) go(current + Math.sign(dy));
+    });
+
+    addEventListener("resize", buildLight);
+  </script>
+</Idea>

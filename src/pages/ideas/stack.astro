@@ -1,0 +1,1036 @@
+---
+/**
+ * stack — the collection as a loose pile of prints on a dark table.
+ * Grab the top print and throw it: it slides away with real momentum and
+ * spin and comes to rest half off the edge of the table, revealing the next.
+ * The top print's catalogue entry is typeset quietly beside the pile.
+ * ← brings the last one back, → throws, Enter looks closer, Esc steps back.
+ */
+import { Picture } from "astro:assets";
+import Idea from "@/layouts/Idea.astro";
+import { getPaintings } from "@/lib/paintings";
+
+const paintings = await getPaintings();
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const total = pad2(paintings.length);
+const words = ["None", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
+const count = words[paintings.length] ?? String(paintings.length);
+---
+
+<Idea title="Stack" background="#141210">
+  <link
+    slot="head"
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,200;0,300;1,200;1,300&family=Spline+Sans+Mono:wght@300;400&display=swap"
+  />
+
+  <main class="table" id="table" aria-label="A stack of prints">
+    {
+      paintings.map((p, i) => (
+        <>
+          <div class="shade" data-i={i} aria-hidden="true" />
+          <div
+            class="print"
+            data-i={i}
+            data-ar={p.image.width / p.image.height}
+            role="img"
+            aria-label={`${p.title}, ${p.artist}, ${p.year}`}
+          >
+            <div class="face" style={`background:${p.palette[0]}`}>
+              <Picture
+                src={p.image}
+                formats={["avif", "webp"]}
+                widths={[640, 960, 1280, 1600, 2000, 2400, 3200]}
+                sizes="(max-width: 760px) 90vw, 52vw"
+                alt=""
+                loading={i < 4 ? "eager" : "lazy"}
+                decoding="async"
+                fetchpriority={i === 0 ? "high" : "auto"}
+                draggable="false"
+              />
+            </div>
+          </div>
+        </>
+      ))
+    }
+    <div class="veil" aria-hidden="true"></div>
+  </main>
+
+  <header class="mast">
+    <span>Artyom Kulimov</span>
+    <span class="mast-r">Paintings, loose</span>
+  </header>
+
+  <aside class="info" aria-live="polite">
+    {
+      paintings.map((p, i) => (
+        <article class="entry" data-i={i} aria-hidden={i === 0 ? "false" : "true"}>
+          <p class="ln no">
+            <span class="tab">{pad2(i + 1)}</span>
+            <span class="of">/ {total}</span>
+          </p>
+          <h1 class="ln ti">{p.title}</h1>
+          <p class="ln by">
+            {p.artist}, {p.year}
+          </p>
+          <dl class="ln dt">
+            <dt>Medium</dt>
+            <dd>{p.medium}</dd>
+            <dt>Held</dt>
+            <dd>{p.location}</dd>
+            <dt>Rights</dt>
+            <dd>{p.rights}</dd>
+            <dt>Source</dt>
+            <dd>
+              {p.source} ·{" "}
+              <a href={p.original} target="_blank" rel="noopener">
+                original ↗
+              </a>
+            </dd>
+          </dl>
+        </article>
+      ))
+    }
+    <div class="entry empty" aria-hidden="true">
+      <p class="ln no"><span class="of">— / {total}</span></p>
+      <p class="ln ti">{count} prints, set aside.</p>
+      <p class="ln by">
+        <button type="button" class="gather">Gather them up</button>
+      </p>
+    </div>
+  </aside>
+
+  <footer class="foot">
+    <span class="hint"><kbd>Throw</kbd> the top print aside · <kbd>←</kbd> <kbd>→</kbd> · <kbd>click</kbd> to look closer</span>
+    <span class="left tab" aria-hidden="true"></span>
+  </footer>
+
+  <p class="look-cap" aria-hidden="true"></p>
+</Idea>
+
+<style is:global>
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #141210;
+    color: #d8d1c2;
+  }
+  body {
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --paper: #e9e3d6;
+    font-family: "Spline Sans Mono", ui-monospace, monospace;
+    font-weight: 300;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+
+  /* ---- the table: a warm dark surface under one soft pool of light ---- */
+  .table {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 62% 70% at var(--lx, 40%) 48%, #2a2622 0%, #1b1916 46%, #100f0d 100%);
+    touch-action: none;
+  }
+  .table::after {
+    /* paper-fine grain so the dark doesn't band */
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    z-index: 1;
+  }
+
+  .print,
+  .shade {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 50% 50%;
+    visibility: hidden;
+  }
+  .ready .print,
+  .ready .shade {
+    visibility: visible;
+  }
+  .print.deep,
+  .shade.deep {
+    visibility: hidden !important;
+  }
+  .print.live,
+  .shade.live {
+    will-change: transform;
+  }
+
+  /* a print: the image on a thin margin of paper */
+  .print {
+    background: var(--paper);
+    background-image: linear-gradient(160deg, #efe9dd, #e3dccd);
+    box-shadow:
+      0 0 0 0.5px rgb(0 0 0 / 0.35),
+      0 1px 1.5px rgb(0 0 0 / 0.45);
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .print.top {
+    pointer-events: auto;
+    cursor: grab;
+  }
+  .print.top.held {
+    cursor: grabbing;
+  }
+  .print.away {
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .print.looking {
+    pointer-events: auto;
+    cursor: zoom-out;
+  }
+  .face {
+    position: absolute;
+    inset: var(--m, 12px);
+    overflow: hidden;
+    box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.25);
+  }
+  .face picture,
+  .face img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  /* the shadow is its own element so it can stay put while the print rises */
+  .shade {
+    border-radius: 2px;
+    box-shadow:
+      0 0 24px 2px rgb(0 0 0 / 0.55),
+      0 0 4px rgb(0 0 0 / 0.5);
+    pointer-events: none;
+  }
+
+  /* ---- look closer ---- */
+  .veil {
+    position: absolute;
+    inset: 0;
+    background: #0d0c0b;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 7000;
+    transition: opacity 0.6s var(--ease);
+  }
+  body.is-looking .veil {
+    opacity: 0.94;
+    pointer-events: auto;
+    cursor: zoom-out;
+  }
+  .look-cap {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 22px;
+    margin: 0;
+    text-align: center;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    color: #8c8576;
+    z-index: 7;
+    opacity: 0;
+    transition: opacity 0.3s linear;
+    pointer-events: none;
+  }
+  .look-cap em {
+    font-family: "Spectral", serif;
+    font-style: italic;
+    font-size: 15px;
+    letter-spacing: 0;
+    color: #e5dece;
+    margin-right: 0.6em;
+  }
+  body.is-looking .look-cap {
+    opacity: 1;
+    transition: opacity 0.6s linear 0.35s;
+  }
+  body.is-looking .info,
+  body.is-looking .foot,
+  body.is-looking .mast {
+    opacity: 0 !important;
+  }
+  .foot {
+    opacity: 0;
+  }
+  body.dealt .foot {
+    opacity: 1;
+  }
+
+  /* ---- type ---- */
+  .mast,
+  .foot {
+    position: fixed;
+    left: clamp(20px, 3vw, 44px);
+    right: clamp(20px, 3vw, 44px);
+    display: flex;
+    justify-content: space-between;
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+    color: #8c8576;
+    z-index: 4;
+    pointer-events: none;
+    transition: opacity 0.4s linear;
+  }
+  .mast {
+    top: clamp(18px, 2.6vh, 30px);
+  }
+  .foot {
+    bottom: clamp(18px, 2.6vh, 30px);
+  }
+  kbd {
+    font: inherit;
+    color: #c9c1b1;
+  }
+  .tab {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .info {
+    position: fixed;
+    z-index: 4;
+    width: clamp(230px, 20vw, 310px);
+    right: clamp(150px, 14.5vw, 250px);
+    top: 50%;
+    transform: translateY(-50%);
+    height: 0;
+    opacity: 0;
+    transition: opacity 0.4s linear;
+  }
+  body.dealt .info {
+    opacity: 1;
+  }
+  .entry {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -9em;
+    pointer-events: none;
+  }
+  .entry.on {
+    pointer-events: auto;
+  }
+  .ln {
+    margin: 0;
+    opacity: 0;
+    transform: translateY(10px);
+    transition:
+      opacity 0.18s linear,
+      transform 0.3s var(--ease);
+  }
+  .entry.on .ln {
+    opacity: 1;
+    transform: none;
+    transition-duration: 0.7s, 1.1s;
+  }
+  .entry.on .ln:nth-child(1) {
+    transition-delay: 0.12s;
+  }
+  .entry.on .ln:nth-child(2) {
+    transition-delay: 0.18s;
+  }
+  .entry.on .ln:nth-child(3) {
+    transition-delay: 0.26s;
+  }
+  .entry.on .ln:nth-child(4) {
+    transition-delay: 0.36s;
+  }
+  .no {
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    color: #c9c1b1;
+    margin-bottom: 22px;
+  }
+  .no .of {
+    color: #6c665a;
+    margin-left: 0.4em;
+  }
+  .ti {
+    font-family: "Spectral", serif;
+    font-weight: 200;
+    font-size: clamp(30px, 2.9vw, 46px);
+    line-height: 1.02;
+    letter-spacing: -0.012em;
+    color: #f0e9da;
+    text-wrap: balance;
+  }
+  .by {
+    font-family: "Spectral", serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 17px;
+    color: #b3ab9b;
+    margin-top: 10px;
+  }
+  .dt {
+    display: grid;
+    grid-template-columns: 5.2em 1fr;
+    gap: 5px 0.8em;
+    margin-top: 28px;
+    font-size: 10.5px;
+    line-height: 1.55;
+    color: #a39b8b;
+  }
+  .dt dt {
+    color: #625c51;
+  }
+  .dt dd {
+    margin: 0;
+  }
+  .info a,
+  .gather {
+    color: #e5dece;
+    text-decoration: none;
+    border-bottom: 1px solid rgb(229 222 206 / 0.35);
+    outline: none;
+  }
+  .info a:hover,
+  .info a:focus-visible,
+  .gather:hover,
+  .gather:focus-visible {
+    border-bottom-color: currentColor;
+  }
+  .gather {
+    background: none;
+    border-top: 0;
+    border-left: 0;
+    border-right: 0;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  @media (max-width: 760px) {
+    .info {
+      left: 22px;
+      right: 22px;
+      width: auto;
+      top: auto;
+      bottom: 64px;
+      transform: none;
+    }
+    .entry {
+      bottom: 0;
+    }
+    .dt {
+      display: none;
+    }
+    .foot .hint {
+      display: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ln,
+    .veil,
+    .look-cap {
+      transition: none !important;
+    }
+  }
+</style>
+
+<script>
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const body = document.body;
+  const table = document.getElementById("table")!;
+  const entries = [...document.querySelectorAll<HTMLElement>(".entry[data-i]")];
+  const emptyEntry = document.querySelector<HTMLElement>(".entry.empty")!;
+  const leftTxt = document.querySelector<HTMLElement>(".foot .left")!;
+  const cap = document.querySelector<HTMLElement>(".look-cap")!;
+  const veil = document.querySelector<HTMLElement>(".veil")!;
+  const infoEl = document.querySelector<HTMLElement>(".info")!;
+
+  type Pose = { x: number; y: number; r: number; s: number; l: number }; // centre px, deg, scale, lift 0–1
+  type Card = {
+    i: number;
+    el: HTMLElement;
+    sh: HTMLElement;
+    srcs: Element[];
+    ar: number;
+    w: number;
+    h: number;
+    seat: { dx: number; dy: number; r: number }; // its own resting spot in the pile
+    pose: Pose;
+    vel: Pose; // for springs
+    anim: ((now: number, dt: number) => boolean) | null; // returns true when finished
+    state: "stack" | "held" | "flying" | "away" | "back" | "look";
+    dir: { x: number; y: number }; // direction it was thrown in
+    rest: Pose; // where it came to rest when set aside
+    peek: boolean;
+    jit: number;
+    asked: number;
+  };
+
+  // seeded noise so the pile looks the same every visit
+  const rnd = (n: number) => {
+    const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+
+  const cards: Card[] = [...document.querySelectorAll<HTMLElement>(".print")].map((el, i) => ({
+    i,
+    el,
+    sh: document.querySelector<HTMLElement>(`.shade[data-i="${i}"]`)!,
+    srcs: [...el.querySelectorAll("source, img")],
+    ar: Number(el.dataset.ar),
+    w: 0,
+    h: 0,
+    seat: {
+      dx: (rnd(i + 1) - 0.5) * 44,
+      dy: (rnd(i + 11) - 0.5) * 30,
+      r: (rnd(i + 21) - 0.5) * (i === 0 ? 2.4 : 10),
+    },
+    pose: { x: 0, y: 0, r: 0, s: 1, l: 0 },
+    vel: { x: 0, y: 0, r: 0, s: 0, l: 0 },
+    anim: null,
+    state: "stack",
+    dir: { x: 1, y: 0 },
+    rest: { x: 0, y: 0, r: 0, s: 1, l: 0 },
+    peek: false,
+    jit: rnd(i + 31),
+    asked: 0,
+  }));
+  const N = cards.length;
+  let stack: number[] = cards.map((c) => c.i); // [top, …, bottom]
+  let away: number[] = []; // in the order they were thrown
+  let looking = -1;
+
+  // ---------- layout ----------
+  let vw = innerWidth;
+  let vh = innerHeight;
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  const pile = { x: 0, y: 0 };
+  const narrow = () => vw < 760;
+  const layout = () => {
+    vw = innerWidth;
+    vh = innerHeight;
+    let areaR: number;
+    let areaH: number;
+    if (narrow()) {
+      areaR = vw;
+      areaH = vh * 0.6;
+      pile.x = vw / 2;
+      pile.y = vh * 0.36;
+    } else {
+      const left = infoEl.getBoundingClientRect().left;
+      areaR = left - vw * 0.04;
+      areaH = vh;
+      pile.x = Math.max(areaR * 0.5, areaR - vw * 0.36);
+      pile.y = vh * 0.49;
+    }
+    table.style.setProperty("--lx", `${(pile.x / vw) * 100}%`);
+    // every print gets the same area, so they weigh the same in the hand
+    const boxW = Math.min(areaR * 0.84, narrow() ? vw * 0.86 : 900);
+    const boxH = areaH * (narrow() ? 0.62 : 0.62);
+    const A = boxW * boxH * 0.72;
+    for (const c of cards) {
+      let w = Math.sqrt(A * c.ar);
+      let h = w / c.ar;
+      const k = Math.min(1, boxW / w, boxH / h);
+      w *= k;
+      h *= k;
+      const m = Math.round(Math.max(8, Math.min(w, h) * 0.035));
+      c.w = Math.round(w + m * 2);
+      c.h = Math.round(h + m * 2);
+      c.el.style.cssText = `width:${c.w}px;height:${c.h}px;--m:${m}px`;
+      c.sh.style.cssText = `width:${c.w}px;height:${c.h}px`;
+      want(c, w);
+    }
+  };
+
+  // ask the <picture> for enough pixels for the size it is shown at
+  const want = (c: Card, cssW: number) => {
+    const px = Math.ceil(cssW * dpr);
+    if (px <= c.asked) return;
+    c.asked = px;
+    const s = `${Math.ceil(cssW)}px`;
+    c.srcs.forEach((e) => e.setAttribute("sizes", s));
+  };
+
+  const seatPose = (c: Card): Pose => ({ x: pile.x + c.seat.dx, y: pile.y + c.seat.dy, r: c.seat.r, s: 1, l: 0 });
+
+  // where a print thrown along `dir` from `from` comes to rest: mostly off the table edge
+  const edgePose = (c: Card, from: { x: number; y: number }, dir: { x: number; y: number }, r: number): Pose => {
+    const a = (r * Math.PI) / 180;
+    const hw = (Math.abs(c.w * Math.cos(a)) + Math.abs(c.h * Math.sin(a))) / 2;
+    const hh = (Math.abs(c.w * Math.sin(a)) + Math.abs(c.h * Math.cos(a))) / 2;
+    // how much of it stays on the table: a generous sliver, never just a corner
+    const j = 0.85 + c.jit * 0.3;
+    const sx = Math.max(80, Math.min(160, vw * 0.095)) * j;
+    const sy = Math.max(70, Math.min(150, vh * 0.14)) * j;
+    const x0 = -hw + sx;
+    const x1 = vw + hw - sx;
+    const y0 = -hh + sy;
+    const y1 = vh + hh - sy;
+    const tx = dir.x > 0.001 ? (x1 - from.x) / dir.x : dir.x < -0.001 ? (x0 - from.x) / dir.x : Infinity;
+    const ty = dir.y > 0.001 ? (y1 - from.y) / dir.y : dir.y < -0.001 ? (y0 - from.y) / dir.y : Infinity;
+    const t = Math.max(0, Math.min(tx, ty));
+    let x = from.x + dir.x * t;
+    let y = from.y + dir.y * t;
+    // keep it off the corners so it reads as a print set aside, not lost
+    if (tx < ty) y = Math.max(vh * 0.14, Math.min(vh * 0.86, y));
+    else x = Math.max(vw * 0.1, Math.min(vw * 0.9, x));
+    return { x, y, r, s: 1, l: 0 };
+  };
+
+  // ---------- drawing ----------
+  const draw = (c: Card) => {
+    const p = c.pose;
+    const s = p.s * (1 + 0.035 * p.l);
+    c.el.style.transform = `translate3d(${(p.x - c.w / 2).toFixed(2)}px, ${(p.y - c.h / 2).toFixed(2)}px, 0) rotate(${p.r.toFixed(3)}deg) scale(${s.toFixed(4)})`;
+    // light falls from above-left: as the print rises its shadow drifts down-right and spreads
+    const ox = 2 + p.l * 14;
+    const oy = 4 + p.l * 30;
+    const ss = p.s * (0.985 + p.l * 0.05);
+    c.sh.style.transform = `translate3d(${(p.x - c.w / 2 + ox).toFixed(2)}px, ${(p.y - c.h / 2 + oy).toFixed(2)}px, 0) rotate(${p.r.toFixed(3)}deg) scale(${ss.toFixed(4)})`;
+    c.sh.style.opacity = String(0.85 - p.l * 0.3);
+  };
+
+  const order = () => {
+    // pile from the bottom up, then the prints set aside (latest on top), then anything in the air
+    stack.forEach((i, d) => {
+      const c = cards[i];
+      const z = 100 + (stack.length - d) * 2;
+      c.el.style.zIndex = String(z);
+      c.sh.style.zIndex = String(z - 1);
+      c.el.classList.toggle("deep", d > 5);
+      c.sh.classList.toggle("deep", d > 5);
+      c.el.classList.toggle("top", d === 0 && looking < 0);
+    });
+    away.forEach((i, k) => {
+      const c = cards[i];
+      c.el.style.zIndex = String(2000 + k * 2);
+      c.sh.style.zIndex = String(1999 + k * 2);
+      c.el.classList.remove("top", "deep");
+      c.sh.classList.remove("deep");
+    });
+    for (const c of cards) {
+      if (c.state === "flying" || c.state === "back" || c.state === "held" || c.state === "look") {
+        const z = c.state === "look" ? 8000 : c.state === "back" ? 6000 : 5000;
+        c.el.style.zIndex = String(z);
+        c.sh.style.zIndex = String(z - 1);
+      }
+      c.el.classList.toggle("away", c.state === "away");
+      c.el.classList.toggle("looking", c.state === "look");
+    }
+  };
+
+  let shownEntry = -2;
+  const caption = () => {
+    const top = stack.length ? stack[0] : -1;
+    if (top !== shownEntry) {
+      shownEntry = top;
+      entries.forEach((e, k) => {
+        e.classList.toggle("on", k === top);
+        e.setAttribute("aria-hidden", String(k !== top));
+      });
+      emptyEntry.classList.toggle("on", top < 0);
+      emptyEntry.setAttribute("aria-hidden", String(top >= 0));
+    }
+    leftTxt.textContent = stack.length === N ? `${N} on the table` : `${stack.length} in the pile · ${away.length} set aside`;
+  };
+
+  // ---------- motion loop ----------
+  let raf = 0;
+  let last = 0;
+  const live = new Set<Card>();
+  const run = (c: Card, anim: Card["anim"]) => {
+    c.anim = anim;
+    live.add(c);
+    c.el.classList.add("live");
+    c.sh.classList.add("live");
+    if (!raf) {
+      last = performance.now();
+      raf = requestAnimationFrame(tick);
+    }
+  };
+  const tick = (now: number) => {
+    const dt = Math.min(40, now - last);
+    last = now;
+    for (const c of live) {
+      const done = c.anim ? c.anim(now, dt) : true;
+      draw(c);
+      if (done && c.state !== "held") {
+        c.anim = null;
+        live.delete(c);
+        // let the browser re-rasterise it crisply at rest
+        c.el.classList.remove("live");
+        c.sh.classList.remove("live");
+      }
+    }
+    raf = live.size ? requestAnimationFrame(tick) : 0;
+  };
+
+  // damped spring back to a pose
+  const springTo = (c: Card, to: Pose, k = 210, damp = 22) => (_: number, dt: number) => {
+    const t = dt / 1000;
+    let rest = true;
+    for (const key of ["x", "y", "r", "s", "l"] as const) {
+      const a = -k * (c.pose[key] - to[key]) - damp * c.vel[key];
+      c.vel[key] += a * t;
+      c.pose[key] += c.vel[key] * t;
+      const tol = key === "x" || key === "y" ? 0.15 : key === "r" ? 0.02 : 0.0008;
+      if (Math.abs(c.pose[key] - to[key]) > tol || Math.abs(c.vel[key]) > tol * 4) rest = false;
+    }
+    if (rest) {
+      Object.assign(c.pose, to);
+      c.vel = { x: 0, y: 0, r: 0, s: 0, l: 0 };
+    }
+    return rest;
+  };
+
+  // a slide across the felt: constant friction, so it decelerates evenly and stops dead
+  const slide = (c: Card, to: Pose, T: number, onDone?: () => void) => {
+    const from = { ...c.pose };
+    const t0 = performance.now();
+    return (now: number) => {
+      const t = Math.min(1, (now - t0) / T);
+      const u = 1 - (1 - t) * (1 - t); // distance under constant deceleration
+      c.pose.x = from.x + (to.x - from.x) * u;
+      c.pose.y = from.y + (to.y - from.y) * u;
+      c.pose.r = from.r + (to.r - from.r) * u;
+      c.pose.s = 1;
+      // it drops back onto the table early in the slide and skims the rest of the way
+      c.pose.l = from.l * Math.max(0, 1 - t * 2.4) ** 2;
+      if (t >= 1) onDone?.();
+      return t >= 1;
+    };
+  };
+
+  // picked up, carried in an arc, set down
+  const carry = (c: Card, to: Pose, T: number, onDone?: () => void) => {
+    const from = { ...c.pose };
+    const t0 = performance.now();
+    const e = (t: number) => 1 - (1 - t) ** 4;
+    return (now: number) => {
+      const t = Math.min(1, (now - t0) / T);
+      const u = e(t);
+      c.pose.x = from.x + (to.x - from.x) * u;
+      c.pose.y = from.y + (to.y - from.y) * u;
+      c.pose.r = from.r + (to.r - from.r) * u;
+      c.pose.s = from.s + (to.s - from.s) * u;
+      c.pose.l = Math.sin(Math.min(1, t * 1.15) * Math.PI) * 0.85 + to.l * u;
+      if (t >= 1) {
+        Object.assign(c.pose, to);
+        onDone?.();
+      }
+      return t >= 1;
+    };
+  };
+
+  // ---------- throw / bring back ----------
+  const throwTop = (v: { x: number; y: number }, spinDeg: number) => {
+    const i = stack[0];
+    if (i === undefined) return;
+    const c = cards[i];
+    stack = stack.slice(1);
+    away.push(i);
+    const speed = Math.hypot(v.x, v.y);
+    const dir = { x: v.x / speed, y: v.y / speed };
+    c.dir = dir;
+    c.state = "flying";
+    const to = edgePose(c, c.pose, dir, c.pose.r + spinDeg);
+    c.rest = to;
+    const D = Math.hypot(to.x - c.pose.x, to.y - c.pose.y);
+    // match the hand's speed at release: T = 2D / v0 under constant friction
+    const T = reduce ? 1 : Math.max(640, Math.min(1500, (2 * D) / Math.max(0.9, speed)));
+    run(
+      c,
+      slide(c, to, T, () => {
+        c.state = "away";
+        order();
+      }),
+    );
+    order();
+    caption();
+    preload();
+  };
+
+  const bringBack = (i: number, T = 760) => {
+    const c = cards[i];
+    if (c.state !== "away" && c.state !== "flying") return;
+    away = away.filter((k) => k !== i);
+    stack = [i, ...stack];
+    c.state = "back";
+    run(
+      c,
+      carry(c, seatPose(c), reduce ? 1 : T, () => {
+        c.state = "stack";
+        order();
+      }),
+    );
+    order();
+    caption();
+  };
+
+  const gather = () => {
+    // last thrown goes down first, so the pile comes back in its original order
+    const back = [...away].reverse();
+    back.forEach((i, k) => window.setTimeout(() => bringBack(i, 900), reduce ? 0 : k * 150));
+  };
+
+  // a keyboard throw: a few pleasing directions, never the same twice in a row
+  const ANGLES = [-14, 196, 104, -152, 22, 250, 160, -60];
+  let kbd = 0;
+  const throwKey = () => {
+    const c = cards[stack[0]];
+    if (!c) return gather();
+    const a = ((ANGLES[kbd++ % ANGLES.length] + (c.jit - 0.5) * 16) * Math.PI) / 180;
+    const sp = 2.2 + c.jit * 0.8;
+    c.pose.l = 0.9; // as if snatched up
+    throwTop({ x: Math.cos(a) * sp, y: Math.sin(a) * sp }, (c.jit > 0.5 ? 1 : -1) * (16 + c.jit * 26));
+  };
+
+  // ---------- look closer ----------
+  const lookPose = (c: Card): Pose => {
+    const s = Math.min((vw * 0.94) / c.w, (vh * 0.86) / c.h);
+    return { x: vw / 2, y: vh * 0.47, r: 0, s, l: 0 };
+  };
+  const look = (i: number) => {
+    const c = cards[i];
+    looking = i;
+    c.state = "look";
+    const to = lookPose(c);
+    want(c, c.w * to.s);
+    body.classList.add("is-looking");
+    const e = entries[i];
+    cap.innerHTML = `<em>${e.querySelector(".ti")!.textContent}</em>${e.querySelector(".by")!.textContent} · Esc`;
+    run(c, carry(c, to, reduce ? 1 : 820));
+    order();
+  };
+  const unlook = () => {
+    if (looking < 0) return;
+    const c = cards[looking];
+    looking = -1;
+    body.classList.remove("is-looking");
+    c.state = "back";
+    run(
+      c,
+      carry(c, seatPose(c), reduce ? 1 : 700, () => {
+        c.state = "stack";
+        order();
+      }),
+    );
+    order();
+  };
+  veil.addEventListener("click", unlook);
+
+  // ---------- the hand ----------
+  let held: Card | null = null;
+  let grab = { x: 0, y: 0 }; // pin in the print's own (unrotated) coordinates
+  let ptr = { x: 0, y: 0 };
+  let prevPtr = { x: 0, y: 0 };
+  let downAt = { x: 0, y: 0, t: 0 };
+  let omega = 0; // deg per ms
+  let samples: { x: number; y: number; t: number }[] = [];
+
+  const holdAnim = (c: Card) => (_: number, dt: number) => {
+    // a paper pinned under a fingertip: drag pulls through the pin, friction at the
+    // centre makes it swing round to trail behind the motion
+    const v = { x: (ptr.x - prevPtr.x) / dt, y: (ptr.y - prevPtr.y) / dt };
+    prevPtr = { ...ptr };
+    const a = (c.pose.r * Math.PI) / 180;
+    const s = c.pose.s * (1 + 0.035 * c.pose.l);
+    const rx = (grab.x * Math.cos(a) - grab.y * Math.sin(a)) * s;
+    const ry = (grab.x * Math.sin(a) + grab.y * Math.cos(a)) * s;
+    const R0 = Math.max(c.w, c.h) * 0.22;
+    const want = ((rx * v.y - ry * v.x) / (rx * rx + ry * ry + R0 * R0)) * (180 / Math.PI) * 0.9; // deg/ms
+    omega += (Math.max(-0.5, Math.min(0.5, want)) - omega) * Math.min(1, dt / 70);
+    c.pose.r += omega * dt;
+    c.pose.l += (1 - c.pose.l) * Math.min(1, dt / 110);
+    c.pose.s = 1;
+    const a2 = (c.pose.r * Math.PI) / 180;
+    const s2 = 1 + 0.035 * c.pose.l;
+    c.pose.x = ptr.x - (grab.x * Math.cos(a2) - grab.y * Math.sin(a2)) * s2;
+    c.pose.y = ptr.y - (grab.x * Math.sin(a2) + grab.y * Math.cos(a2)) * s2;
+    return false;
+  };
+
+  table.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const el = (e.target as Element).closest<HTMLElement>(".print");
+    if (!el) return;
+    const c = cards[Number(el.dataset.i)];
+    if (c.state === "away") {
+      bringBack(c.i);
+      return;
+    }
+    if (c.state === "look") {
+      unlook();
+      return;
+    }
+    if (stack[0] !== c.i || looking >= 0) return;
+    e.preventDefault();
+    table.setPointerCapture(e.pointerId);
+    held = c;
+    c.state = "held";
+    c.el.classList.add("held");
+    ptr = prevPtr = { x: e.clientX, y: e.clientY };
+    downAt = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    samples = [{ x: e.clientX, y: e.clientY, t: e.timeStamp }];
+    omega = 0;
+    // pin = pointer in the print's local frame
+    const a = (-c.pose.r * Math.PI) / 180;
+    const s = c.pose.s * (1 + 0.035 * c.pose.l);
+    const dx = (e.clientX - c.pose.x) / s;
+    const dy = (e.clientY - c.pose.y) / s;
+    grab = { x: dx * Math.cos(a) - dy * Math.sin(a), y: dx * Math.sin(a) + dy * Math.cos(a) };
+    c.vel = { x: 0, y: 0, r: 0, s: 0, l: 0 };
+    run(c, holdAnim(c));
+    order();
+    want(c, lookPose(c).s * c.w); // the hand is on it: fetch the big version too
+  });
+  table.addEventListener("pointermove", (e) => {
+    if (!held) return;
+    ptr = { x: e.clientX, y: e.clientY };
+    samples.push({ x: e.clientX, y: e.clientY, t: e.timeStamp });
+    while (samples.length > 2 && e.timeStamp - samples[0].t > 90) samples.shift();
+  });
+  const release = (e: PointerEvent) => {
+    const c = held;
+    if (!c) return;
+    held = null;
+    c.el.classList.remove("held");
+    const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
+    const a = samples[0];
+    const b = samples[samples.length - 1];
+    const dtv = Math.max(8, b.t - a.t);
+    const fresh = e.timeStamp - b.t < 90;
+    const v = fresh ? { x: (b.x - a.x) / dtv, y: (b.y - a.y) / dtv } : { x: 0, y: 0 };
+    const speed = Math.hypot(v.x, v.y);
+    const seat = seatPose(c);
+    const disp = { x: c.pose.x - seat.x, y: c.pose.y - seat.y };
+    const far = Math.hypot(disp.x, disp.y);
+    if (moved < 6 && e.timeStamp - downAt.t < 400) {
+      // a tap: pick it up and look closer
+      c.state = "stack";
+      look(c.i);
+      return;
+    }
+    if (speed > 0.45 || far > Math.min(c.w, c.h) * 0.42) {
+      const dir = speed > 0.45 ? v : disp;
+      const n = Math.hypot(dir.x, dir.y) || 1;
+      const sp = Math.max(speed, 1.1);
+      // spin carries on from the hand; constant friction stops it with the slide
+      let spin = omega * ((2 * 600) / 2) + (c.jit - 0.5) * 10;
+      if (Math.abs(spin) < 7) spin = (spin < 0 ? -1 : 1) * (7 + c.jit * 8);
+      spin = Math.max(-75, Math.min(75, spin));
+      throwTop({ x: (dir.x / n) * sp, y: (dir.y / n) * sp }, spin);
+    } else {
+      c.state = "stack";
+      c.vel = { x: v.x * 1000, y: v.y * 1000, r: omega * 1000, s: 0, l: 0 };
+      run(c, springTo(c, seat, 180, 19));
+      order();
+    }
+  };
+  table.addEventListener("pointerup", release);
+  table.addEventListener("pointercancel", release);
+  // hovering a print at the edge nudges it into view
+  table.addEventListener("pointerover", (e) => {
+    const el = (e.target as Element).closest<HTMLElement>(".print.away");
+    if (!el) return;
+    const c = cards[Number(el.dataset.i)];
+    if (c.peek) return;
+    c.peek = true;
+    const rest = c.rest;
+    const peek = { ...rest, x: rest.x - c.dir.x * 28, y: rest.y - c.dir.y * 28 };
+    c.vel = { x: 0, y: 0, r: 0, s: 0, l: 0 };
+    run(c, springTo(c, peek, 260, 26));
+    el.addEventListener(
+      "pointerleave",
+      () => {
+        c.peek = false;
+        if (c.state === "away") run(c, springTo(c, c.rest, 260, 26));
+      },
+      { once: true },
+    );
+  });
+
+  // ---------- keys ----------
+  addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || held) return;
+    if (looking >= 0) {
+      if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        unlook();
+      }
+      return;
+    }
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      throwKey();
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const i = away[away.length - 1];
+      if (i !== undefined) bringBack(i);
+    } else if ((e.key === "Enter" || e.key === " ") && stack.length && !(e.target as Element).closest?.("a, button")) {
+      e.preventDefault();
+      look(stack[0]);
+    }
+  });
+  document.querySelector(".gather")!.addEventListener("click", gather);
+
+  // fetch the next couple of prints at full table size before they're revealed
+  const preload = () => stack.slice(0, 3).forEach((i) => cards[i].el.querySelector("img")?.decode().catch(() => {}));
+
+  // ---------- go ----------
+  const place = () => {
+    for (const c of cards) {
+      if (c.state === "stack") c.pose = seatPose(c);
+      else if (c.state === "away") c.pose = c.rest = edgePose(c, pile, c.dir, c.pose.r);
+      else if (c.state === "look") c.pose = lookPose(c);
+      draw(c);
+    }
+  };
+  addEventListener("resize", () => {
+    layout();
+    place();
+  });
+
+  layout();
+  place();
+  order();
+  shownEntry = -3;
+  leftTxt.textContent = "";
+
+  // deal: the pile lands print by print, the top one last
+  const firstImg = cards[0].el.querySelector("img");
+  const ready = Promise.race([
+    Promise.all(cards.slice(0, 3).map((c) => c.el.querySelector("img")?.decode().catch(() => {}))),
+    new Promise((r) => setTimeout(r, 2200)),
+  ]);
+  ready.then(() => {
+    body.classList.add("ready");
+    const dealtIn = () => {
+      body.classList.add("dealt");
+      caption();
+    };
+    if (reduce || !firstImg) return dealtIn();
+    const dealt = stack.slice(0, 6).reverse(); // bottom of the visible pile first
+    dealt.forEach((i, k) => {
+      const c = cards[i];
+      const seat = seatPose(c);
+      const a = ((70 + (c.jit - 0.5) * 50) * Math.PI) / 180;
+      c.pose = { x: seat.x - Math.cos(a) * vh * 0.9, y: seat.y + Math.sin(a) * vh * 0.9, r: seat.r - 24 + c.jit * 30, s: 1, l: 0.8 };
+      draw(c);
+      window.setTimeout(() => run(c, slide(c, seat, 900, k === dealt.length - 1 ? dealtIn : undefined)), 120 + k * 170);
+    });
+  });
+</script>

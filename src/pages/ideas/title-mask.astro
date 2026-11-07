@@ -1,0 +1,535 @@
+---
+/**
+ * title-mask — the painting is first seen through its own name.
+ * Huge letters cut out of a dark field are windows onto the painting. Scroll
+ * and the letters swell past the edges of the screen, the field dissolves, and
+ * the painting stands edge to edge (pulling back slightly as it does). Keep
+ * going and it gives way to the next name.
+ */
+import { Picture } from "astro:assets";
+import Idea from "@/layouts/Idea.astro";
+import { getPaintings } from "@/lib/paintings";
+
+const paintings = await getPaintings();
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * How each title is set. `w` is the share of the screen width a line spans;
+ * `zoom` names the glyph (line, char, and a point inside its box) the camera
+ * flies into — chosen to land inside a thick stroke, so the window keeps
+ * opening instead of closing on a counter.
+ */
+type Line = { t: string; italic?: boolean; w?: number };
+type Setting = { lines: Line[]; zoom: { line: number; char: number; fx: number; fy: number } };
+const settings: Record<string, Setting> = {
+  pandemonium: {
+    lines: [{ t: "PANDE" }, { t: "MONIUM" }],
+    zoom: { line: 1, char: 3, fx: 0.5, fy: 0.62 },
+  },
+  "fall-of-babylon": {
+    lines: [{ t: "The Fall of", italic: true, w: 0.5 }, { t: "BABYLON" }],
+    zoom: { line: 1, char: 4, fx: 0.28, fy: 0.62 },
+  },
+  "wet-moon-putney-road": {
+    lines: [{ t: "A WET MOON" }, { t: "Putney Road", italic: true, w: 0.56 }],
+    zoom: { line: 0, char: 4, fx: 0.5, fy: 0.66 },
+  },
+};
+const settingFor = (p: (typeof paintings)[number]): Setting =>
+  settings[p.id] ?? { lines: [{ t: p.title.toUpperCase() }], zoom: { line: 0, char: Math.floor(p.title.length / 2), fx: 0.5, fy: 0.5 } };
+---
+
+<Idea title="Title mask" background="#0c0b0b">
+  <link slot="head" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400..900&family=Hanken+Grotesk:wght@400;500&display=swap" />
+
+  <div class="track" aria-hidden="true"></div>
+
+  <main class="stage" aria-label="Paintings">
+    {
+      paintings.map((p, i) => {
+        const s = settingFor(p);
+        const aspect = p.image.width / p.image.height;
+        const bg = p.palette[0];
+        return (
+          <section class="layer" data-index={i} data-zoom={JSON.stringify(s.zoom)} style={`z-index:${paintings.length - i};--bg:${bg}`} aria-label={p.title}>
+            <div class="paint">
+              <Picture
+                src={p.image}
+                alt={`${p.title}, ${p.artist}, ${p.year}`}
+                widths={[960, 1440, 1920, 2560, 3200]}
+                sizes={`max(100vw, ${Math.ceil(aspect * 100)}vh)`}
+                formats={["avif", "webp"]}
+                quality={72}
+                loading="eager"
+                decoding="async"
+                fetchpriority={i === 0 ? "high" : "low"}
+              />
+            </div>
+
+            <div class="field">
+              <svg class="cut" aria-hidden="true">
+                <defs>
+                  <mask id={`m-${i}`} maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">
+                    <rect class="m-white" x="0" y="0" width="100%" height="100%" fill="#fff" />
+                    <g class="words">
+                      {s.lines.map((l) => (
+                        <text class:list={["w", { "is-italic": l.italic }]} data-w={l.w ?? 1} fill="#000">
+                          {l.t}
+                        </text>
+                      ))}
+                    </g>
+                  </mask>
+                </defs>
+                <rect class="m-fill" x="0" y="0" width="100%" height="100%" fill={bg} mask={`url(#m-${i})`} />
+              </svg>
+              <p class="tl">
+                {pad(i + 1)} <span>/ {pad(paintings.length)}</span>
+              </p>
+              <p class="bl">
+                {p.artist} <span>·</span> {p.year}
+              </p>
+              <p class="br">{i === 0 ? "Scroll" : ""}</p>
+            </div>
+
+            <div class="caption">
+              <div>
+                <h2>{p.title}</h2>
+                <p class="by">
+                  {p.artist}, {p.year}
+                </p>
+              </div>
+              <p class="fine">
+                <span>{p.medium}</span>
+                <span>{p.location}</span>
+                <span>
+                  {p.rights} · {p.source}
+                </span>
+                <a href={p.original} target="_blank" rel="noopener">
+                  Full-resolution original ↗
+                </a>
+              </p>
+            </div>
+          </section>
+        )
+      })
+    }
+  </main>
+
+  <style is:global>
+    html {
+      background: #0c0b0b;
+      scrollbar-width: none;
+    }
+    html::-webkit-scrollbar {
+      display: none;
+    }
+    body {
+      margin: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+  </style>
+
+  <style>
+    :root {
+      --ink: #f3ede2;
+    }
+    .track {
+      /* height set from script: one stretch of scrolling per painting */
+      height: 600vh;
+    }
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+    }
+    .layer {
+      position: absolute;
+      inset: 0;
+      will-change: opacity;
+    }
+    .paint,
+    .field {
+      position: absolute;
+      inset: 0;
+    }
+    .paint :global(picture),
+    .paint :global(img) {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .paint :global(img) {
+      object-fit: cover;
+      will-change: transform;
+      transform-origin: var(--ox, 50%) var(--oy, 50%);
+    }
+    /* the field is the painting's darkest tone, pushed nearer to black so the letters read */
+    .m-fill {
+      fill: color-mix(in oklab, var(--bg) 52%, #000);
+    }
+    .cut {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .w {
+      font-family: "Bodoni Moda", "Didot", serif;
+      font-weight: 900;
+      /* a middling optical size keeps the hairlines open enough to see through */
+      font-variation-settings: "opsz" 30;
+      letter-spacing: -0.004em;
+    }
+    .w.is-italic {
+      font-style: italic;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .field p {
+      position: absolute;
+      margin: 0;
+      color: var(--ink);
+      font-family: "Hanken Grotesk", system-ui, sans-serif;
+      font-weight: 500;
+      font-size: 10.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.72;
+    }
+    .field p span {
+      opacity: 0.5;
+    }
+    .tl {
+      top: 30px;
+      left: 36px;
+    }
+    .bl {
+      bottom: 30px;
+      left: 36px;
+    }
+    .br {
+      bottom: 30px;
+      right: 36px;
+    }
+
+    .caption {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 40px;
+      padding: 120px 36px 30px;
+      color: var(--ink);
+      font-family: "Bodoni Moda", Georgia, serif;
+      background: linear-gradient(to top, rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.24) 55%, transparent);
+      opacity: var(--cap, 0);
+      pointer-events: none;
+    }
+    .layer.has-caption .caption {
+      pointer-events: auto;
+    }
+    .caption > div {
+      transform: translateY(calc((1 - var(--cap, 0)) * 10px));
+    }
+    h2 {
+      margin: 0;
+      font-style: italic;
+      font-weight: 500;
+      font-variation-settings: "opsz" 28;
+      font-kerning: normal;
+      font-size: clamp(26px, 2.6vw, 38px);
+      line-height: 1.05;
+      letter-spacing: -0.005em;
+    }
+    .by {
+      margin: 6px 0 0;
+      font-size: 15px;
+      font-variation-settings: "opsz" 14;
+      letter-spacing: 0.01em;
+    }
+    .fine {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+      font-family: "Hanken Grotesk", system-ui, sans-serif;
+      font-size: 11px;
+      line-height: 1.45;
+      letter-spacing: 0.02em;
+      text-align: right;
+      text-shadow: 0 0 12px rgb(0 0 0 / 0.5);
+    }
+    .fine span {
+      opacity: 0.78;
+    }
+    .fine a {
+      margin-top: 6px;
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px solid rgb(243 237 226 / 0.4);
+    }
+    .fine a:hover,
+    .fine a:focus-visible {
+      border-color: var(--ink);
+      outline: none;
+    }
+
+    @media (max-width: 700px) {
+      .caption {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 80px 20px 22px;
+      }
+      .fine {
+        align-items: flex-start;
+        text-align: left;
+      }
+      .tl,
+      .bl {
+        left: 20px;
+      }
+      .br {
+        right: 20px;
+      }
+    }
+  </style>
+
+  <script>
+    const layers = [...document.querySelectorAll<HTMLElement>(".layer")];
+    const track = document.querySelector<HTMLElement>(".track")!;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const N = layers.length;
+
+    // One painting = SEG screens of scrolling, split into phases of local t ∈ [0,1]:
+    const SEG = 2.3;
+    const A = 0.1; //  0 → A   the name holds
+    const B = 0.6; //  A → B   letters swell, the field dissolves, the painting pulls back
+    const C = 0.86; // B → C   the painting alone, with its caption
+    //                 C → 1   it fades, uncovering the next name
+    const STOP_FULL = (B + C) / 2;
+
+    type Zoom = { line: number; char: number; fx: number; fy: number };
+    type Geo = { zx: number; zy: number; ox: string; oy: string };
+    const geo: Geo[] = [];
+
+    const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+    const smooth = (t: number) => t * t * (3 - 2 * t);
+    const inOutCubic = (t: number) => (t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2);
+    const inQuad = (t: number) => t * t;
+
+    /* ---------- set the type to fill the screen ---------- */
+    const layout = () => {
+      const W = innerWidth;
+      const H = innerHeight;
+      track.style.height = `${((N - 1 + C) * SEG + 1) * 100}vh`;
+      layers.forEach((layer, li) => {
+        const texts = [...layer.querySelectorAll<SVGTextElement>("text.w")];
+        const margin = Math.max(20, W * 0.035);
+        const sizes = texts.map((t) => {
+          t.setAttribute("font-size", "100");
+          t.setAttribute("x", "0");
+          t.setAttribute("y", "0");
+          const w = t.getComputedTextLength() || 1;
+          return ((W - margin * 2) * Number(t.dataset.w)) / w * 100;
+        });
+        // vertical rhythm: caps sit on a tight measure; italics carry ascenders/descenders
+        const capH = 0.7;
+        const metrics = texts.map((t, i) => {
+          const it = t.classList.contains("is-italic");
+          return { top: (it ? 0.74 : capH) * sizes[i], bottom: (it ? 0.2 : 0) * sizes[i], gap: (it ? 0.12 : 0.1) * sizes[i] };
+        });
+        let total = metrics.reduce((s, m, i) => s + m.top + m.bottom + (i ? Math.max(m.gap, metrics[i - 1].gap) : 0), 0);
+        // never taller than ~78% of the screen
+        const fit = Math.min(1, (H * 0.78) / total);
+        total *= fit;
+        let y = (H - total) / 2;
+        texts.forEach((t, i) => {
+          const fs = sizes[i] * fit;
+          const m = metrics[i];
+          if (i) y += Math.max(m.gap, metrics[i - 1].gap) * fit;
+          y += m.top * fit;
+          t.setAttribute("font-size", fs.toFixed(2));
+          const w = t.getComputedTextLength();
+          const it = t.classList.contains("is-italic");
+          // italic sub-lines sit flush left with the big line; caps lines are centred
+          t.setAttribute("x", (it ? margin + (W - margin * 2) * 0.0 : (W - w) / 2).toFixed(2));
+          t.setAttribute("y", y.toFixed(2));
+          y += m.bottom * fit;
+        });
+        // the point we fly into
+        const z: Zoom = JSON.parse(layer.dataset.zoom || "{}");
+        const t = texts[Math.min(z.line, texts.length - 1)];
+        let zx = W / 2;
+        let zy = H / 2;
+        try {
+          const n = t.getNumberOfChars();
+          const r = t.getExtentOfChar(Math.min(z.char, n - 1));
+          const fs = Number(t.getAttribute("font-size"));
+          const baseline = Number(t.getAttribute("y"));
+          zx = r.x + r.width * z.fx;
+          // vertical: measure within the cap height, not the font's full extent
+          zy = baseline - capH * fs * (1 - z.fy);
+        } catch {
+          /* keep centre */
+        }
+        geo[li] = { zx, zy, ox: `${((zx / W) * 100).toFixed(2)}%`, oy: `${((zy / H) * 100).toFixed(2)}%` };
+        layer.querySelector<HTMLElement>(".paint img")?.style.setProperty("--ox", geo[li].ox);
+        layer.querySelector<HTMLElement>(".paint img")?.style.setProperty("--oy", geo[li].oy);
+      });
+      frame(true);
+    };
+
+    /* ---------- scroll → state ---------- */
+    let lastY = -1;
+    let intro = 0; // 0 → 1 once, on arrival
+    const frame = (force = false) => {
+      const y = scrollY;
+      if (!force && y === lastY && intro >= 1) return;
+      lastY = y;
+      const P = y / innerHeight / SEG;
+      layers.forEach((layer, i) => {
+        const t = P - i;
+        const g = geo[i];
+        if (!g) return;
+        const words = layer.querySelector<SVGGElement>(".words")!;
+        const field = layer.querySelector<HTMLElement>(".field")!;
+        const img = layer.querySelector<HTMLElement>(".paint img");
+        const hidden = t > 1.001 || t < -1.05;
+        layer.style.visibility = hidden ? "hidden" : "visible";
+        if (hidden) return;
+
+        // reveal progress
+        const r = reduced ? (t > (A + B) / 2 ? 1 : 0) : inOutCubic(clamp((t - A) / (B - A)));
+        // letters swell exponentially (feels like constant speed toward the glyph)
+        const scale = reduced ? 1 : Math.exp(Math.log(26) * r ** 1.6);
+        words.setAttribute("transform", `translate(${g.zx} ${g.zy}) scale(${scale.toFixed(4)}) translate(${-g.zx} ${-g.zy})`);
+        const fieldOpacity = 1 - smooth(clamp((r - 0.5) / 0.45));
+        // first arrival: the name settles in
+        const enter = i === 0 ? smooth(clamp(intro)) : 1;
+        field.style.opacity = (fieldOpacity * (i === 0 ? 1 : 1)).toFixed(3);
+        field.style.visibility = fieldOpacity <= 0.001 ? "hidden" : "visible";
+        const inner = field.querySelectorAll<HTMLElement>("p");
+        inner.forEach((p) => (p.style.opacity = (0.72 * enter * (1 - smooth(clamp(r / 0.25)))).toFixed(3)));
+
+        // the painting: seen close through the letters, pulling back as it opens
+        const zoom = reduced ? 1 : 1.16 - 0.16 * r + (i === 0 ? 0.04 * (1 - enter) : 0);
+        if (img) {
+          img.style.transform = `scale(${zoom.toFixed(4)})`;
+          // seen through the letters the painting is lifted a little, so the
+          // windows glow against the field; it settles to true as it opens
+          const lift = reduced ? 0 : 0.42 * (1 - smooth(clamp(r / 0.7)));
+          img.style.filter = lift > 0.002 ? `brightness(${(1 + lift).toFixed(3)}) saturate(${(1 + lift * 0.25).toFixed(3)})` : "";
+        }
+
+        // caption, then hand-over to the next name
+        const cap = i === N - 1 ? smooth(clamp((t - B) / 0.08)) : smooth(clamp((t - B) / 0.08)) * (1 - smooth(clamp((t - (C - 0.06)) / 0.06)));
+        layer.style.setProperty("--cap", cap.toFixed(3));
+        layer.classList.toggle("has-caption", cap > 0.5);
+        const out = i === N - 1 ? 0 : inQuad(clamp((t - C) / (1 - C)));
+        layer.style.opacity = (1 - out).toFixed(3);
+      });
+    };
+
+    const tick = () => {
+      frame();
+      requestAnimationFrame(tick);
+    };
+
+    /* ---------- arrival ---------- */
+    const start = () => {
+      layout();
+      const t0 = performance.now();
+      const run = (now: number) => {
+        intro = reduced ? 1 : Math.min(1, (now - t0) / 1800);
+        frame(true);
+        if (intro < 1) requestAnimationFrame(run);
+      };
+      requestAnimationFrame(run);
+      requestAnimationFrame(tick);
+    };
+    document.fonts.ready.then(start);
+    addEventListener("resize", layout);
+
+    /* ---------- stops: keyboard and a gentle settle ---------- */
+    const stops = () => {
+      const s: number[] = [];
+      for (let i = 0; i < N; i++) {
+        s.push(i * SEG * innerHeight);
+        s.push((i + STOP_FULL) * SEG * innerHeight);
+      }
+      return s;
+    };
+    let glideId = 0;
+    let gliding = false;
+    const glideTo = (top: number, ms = 1500) => {
+      const id = ++glideId;
+      const from = scrollY;
+      if (reduced) return scrollTo(0, top);
+      gliding = true;
+      const t0 = performance.now();
+      const step = (now: number) => {
+        if (id !== glideId) return;
+        const k = Math.min(1, (now - t0) / ms);
+        scrollTo(0, from + (top - from) * inOutCubic(k));
+        if (k < 1) requestAnimationFrame(step);
+        else gliding = false;
+      };
+      requestAnimationFrame(step);
+    };
+    const cancelGlide = () => {
+      glideId++;
+      gliding = false;
+    };
+    addEventListener("wheel", cancelGlide, { passive: true });
+    addEventListener("touchstart", cancelGlide, { passive: true });
+
+    addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const s = stops();
+      const y = scrollY;
+      let to: number | undefined;
+      if (["ArrowDown", "ArrowRight", "PageDown", " "].includes(e.key)) to = s.find((v) => v > y + 4);
+      else if (["ArrowUp", "ArrowLeft", "PageUp"].includes(e.key)) to = [...s].reverse().find((v) => v < y - 4);
+      else if (e.key === "Home") to = 0;
+      else if (e.key === "End") to = s[s.length - 1];
+      else return;
+      e.preventDefault();
+      if (to !== undefined) glideTo(to);
+    });
+
+    // If scrolling stops mid-transition, finish the gesture rather than leave
+    // the letters hanging half-grown.
+    let settleTimer = 0;
+    let prevY = scrollY;
+    let dir = 1; // direction of the user's last movement
+    addEventListener(
+      "scroll",
+      () => {
+        const y = scrollY;
+        if (!gliding && y !== prevY) dir = Math.sign(y - prevY);
+        prevY = y;
+        clearTimeout(settleTimer);
+        if (gliding) return;
+        settleTimer = window.setTimeout(() => {
+          if (gliding) return;
+          const P = scrollY / innerHeight / SEG;
+          const i = Math.floor(P);
+          const t = P - i;
+          const inReveal = t > A + 0.015 && t < B - 0.015;
+          const inHandover = t > C + 0.015 && t < 0.985 && i < N - 1;
+          if (!inReveal && !inHandover) return;
+          const target = inReveal ? (dir > 0 ? i + STOP_FULL : i) : dir > 0 ? i + 1 : i + STOP_FULL;
+          glideTo(target * SEG * innerHeight, 1300);
+        }, 380);
+      },
+      { passive: true },
+    );
+  </script>
+</Idea>

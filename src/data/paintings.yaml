@@ -1,0 +1,54 @@
+# One entry per painting. To add one: drop the image in src/assets/paintings/
+# and copy a block below. The wall lays paintings out automatically, in this
+# order and at their real relative size. Size comes from `medium`
+# ("… 123 × 185 cm"); add `size: { h, w, approx }` when it isn't there.
+# `details` are optional points of interest (x/y are 0–1 across the image).
+
+- id: pandemonium
+  title: Pandemonium
+  artist: John Martin
+  year: "1841"
+  medium: Oil on canvas, 123 × 185 cm
+  location: Musée du Louvre, Paris
+  rights: Public domain
+  source: Wikimedia Commons
+  original: https://commons.wikimedia.org/wiki/File:John_Martin_Le_Pandemonium_Louvre.JPG
+  image: ../assets/paintings/pandemonium.jpg
+  palette: ["#1d1209", "#2f160a", "#883d14", "#57270f"]
+  details:
+    - { x: 0.74, y: 0.62, zoom: 4, note: "Satan, shield raised, on the rock" }
+    - { x: 0.45, y: 0.42, zoom: 3, note: "The palace of Pandemonium, lit from within" }
+    - { x: 0.38, y: 0.82, zoom: 4, note: "The burning lake" }
+
+- id: fall-of-babylon
+  title: The Fall of Babylon
+  artist: John Martin
+  year: "1819"
+  medium: Hand-coloured mezzotint (1831), after the 1819 painting
+  size: { h: 60, w: 93, approx: true }
+  location: Wellcome Collection, London
+  rights: Public domain · photo CC BY 4.0 (Wellcome Collection)
+  source: Wikimedia Commons
+  original: https://commons.wikimedia.org/wiki/File:The_fall_of_Babylon;_Cyrus_the_Great_defeating_the_Chaldean_Wellcome_V0034440.jpg
+  image: ../assets/paintings/fall-of-babylon.jpg
+  palette: ["#0c0b0b", "#2a2622", "#413831", "#726251"]
+  details:
+    - { x: 0.33, y: 0.3, zoom: 3.5, note: "The Tower of Babel above the city" }
+    - { x: 0.68, y: 0.24, zoom: 3.5, note: "Lightning over the Euphrates" }
+    - { x: 0.28, y: 0.76, zoom: 4, note: "The women of the court" }
+
+- id: wet-moon-putney-road
+  title: A Wet Moon, Putney Road
+  artist: John Atkinson Grimshaw
+  year: "1886"
+  medium: Oil on canvas, 61 × 107 cm
+  location: Private collection
+  rights: Public domain
+  source: Wikimedia Commons
+  original: https://commons.wikimedia.org/wiki/File:John_Atkinson_Grimshaw_-_A_Wet_Moon,_Putney_Road_(1886).jpg
+  image: ../assets/paintings/wet-moon-putney-road.jpg
+  palette: ["#1d1e1b", "#343225", "#696a47", "#888e67"]
+  details:
+    - { x: 0.18, y: 0.24, zoom: 4, note: "The moon through bare branches" }
+    - { x: 0.34, y: 0.74, zoom: 4, note: "A lone carriage on the wet road" }
+    - { x: 0.74, y: 0.58, zoom: 3.5, note: "Gaslit windows behind the wall" }
