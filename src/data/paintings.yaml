@@ -2,7 +2,8 @@
 # and copy a block below. The wall lays paintings out automatically, in this
 # order and at their real relative size. Size comes from `medium`
 # ("… 123 × 185 cm"); add `size: { h, w, approx }` when it isn't there.
-# `details` are optional points of interest (x/y are 0–1 across the image).
+# `story` is why the painting is here. `details` are optional points of
+# interest (x/y are 0–1 across the image).
 
 - id: pandemonium
   title: Pandemonium
@@ -13,6 +14,10 @@
   rights: Public domain
   source: Wikimedia Commons
   original: https://commons.wikimedia.org/wiki/File:John_Martin_Le_Pandemonium_Louvre.JPG
+  story: >-
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+    incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
+    nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
   image: ../assets/paintings/pandemonium.jpg
   palette: ["#1d1209", "#2f160a", "#883d14", "#57270f"]
   details:
@@ -28,9 +33,13 @@
   # Image area of the 1831 plate, from the British Museum's impression.
   size: { h: 46.4, w: 71.9 }
   location: Wellcome Collection, London
-  rights: Public domain · photo CC BY 4.0 (Wellcome Collection)
-  source: Wikimedia Commons
+  rights: Public domain
+  source: Wellcome Collection, via Wikimedia Commons
   original: https://commons.wikimedia.org/wiki/File:The_fall_of_Babylon;_Cyrus_the_Great_defeating_the_Chaldean_Wellcome_V0034440.jpg
+  story: >-
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+    incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
+    nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
   image: ../assets/paintings/fall-of-babylon.jpg
   palette: ["#0c0b0b", "#2a2622", "#413831", "#726251"]
   details:
@@ -47,6 +56,10 @@
   rights: Public domain
   source: Wikimedia Commons
   original: https://commons.wikimedia.org/wiki/File:John_Atkinson_Grimshaw_-_A_Wet_Moon,_Putney_Road_(1886).jpg
+  story: >-
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+    incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
+    nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
   image: ../assets/paintings/wet-moon-putney-road.jpg
   palette: ["#1d1e1b", "#343225", "#696a47", "#888e67"]
   details:

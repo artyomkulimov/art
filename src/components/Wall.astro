@@ -1,8 +1,8 @@
 ---
 /**
  * The site. One architectural drawing: lettered grid axes run down the whole
- * page, the paintings hang to scale on wall elevations, and a schedule below
- * lists every work. Clicking a painting opens it in place — the grid stays put,
+ * page, the paintings hang on wall elevations, and a schedule below lists
+ * every work. Clicking a painting opens it in place — the grid stays put,
  * everything else steps aside — and scrolling down puts it back. `open`
  * renders a painting already open, for its own address (/<id>/).
  */
@@ -18,28 +18,12 @@ const paintings = await getPaintings();
 const openIndex = paintings.findIndex((p) => p.id === Astro.props.open);
 
 const sizes = paintings.map(sizeOf);
-// Drawn size in metres: real width, height from the image so nothing is cropped.
-const metres = paintings.map((p, i) => ({
-  w: sizes[i].w / 100,
-  h: (sizes[i].w / 100) * (p.image.height / p.image.width),
-}));
+const aspects = paintings.map((p) => p.image.width / p.image.height);
 
 const D_COLS = 12;
 const M_COLS = 4;
-const desk = hang(metres, {
-  cols: D_COLS,
-  perMeter: 2.4,
-  margin: 0.5,
-  gap: 0.6,
-  step: 1,
-});
-const mob = hang(metres, {
-  cols: M_COLS,
-  perMeter: 1.45,
-  margin: 0.2,
-  gap: 0.35,
-  step: 0.5,
-});
+const desk = hang(aspects, { cols: D_COLS, perRow: 3, maxW: 3.3, maxH: 3.4 });
+const mob = hang(aspects, { cols: M_COLS, perRow: 1, maxW: 3.3, maxH: 3.6 });
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -47,7 +31,7 @@ const dims = (i: number) =>
   `${sizes[i].approx ? "≈ " : ""}${fmt(sizes[i].h)} × ${fmt(sizes[i].w)} cm`;
 const SIZE_IN_MEDIUM = /,?\s*\d[\d.]*\s*[×x]\s*\d[\d.]*\s*cm/;
 const mediumOf = (m: string) => m.replace(SIZE_IN_MEDIUM, "");
-const letter = (k: number) => String.fromCharCode(65 + k);
+const letter = (k: number) => String.fromCharCode(97 + k);
 
 const years = paintings
   .map((p) => Number.parseInt(p.year, 10))
@@ -55,7 +39,9 @@ const years = paintings
 const span =
   years.length > 0 ? `${Math.min(...years)}–${Math.max(...years)}` : "";
 const total = pad(paintings.length);
-const stamp = new Date().toISOString().slice(0, 7).replace("-", ".");
+const rights = [...new Set(paintings.map((p) => p.rights.toLowerCase()))].join(
+  " / "
+);
 
 /** Inline position for something placed in cells, with desktop and mobile values. */
 const at = (
@@ -69,17 +55,19 @@ const wallsOf = (e: Elevation, cls: string) =>
     ...w,
     k,
     cls,
-    name: `Wall ${letter(k)}`,
-    axes: e.hung.filter((h) => h.wall === k),
+    name: `wall ${letter(k)}`,
+    hung: e.hung.filter((h) => h.wall === k),
   }));
 const walls = [...wallsOf(desk, "d-only"), ...wallsOf(mob, "m-only")];
 
-const siteTitle = "Paintings — Artyom Kulimov";
+const siteTitle = "paintings — artyom kulimov";
 const opened = openIndex >= 0 ? paintings[openIndex] : undefined;
-const title = opened ? `${opened.title} — ${siteTitle}` : siteTitle;
+const title = opened
+  ? `${opened.title.toLowerCase()} — ${siteTitle}`
+  : siteTitle;
 const description = opened
   ? `${opened.title} by ${opened.artist}, ${opened.year}.`
-  : "A small, slowly growing collection of paintings Artyom Kulimov finds beautiful.";
+  : "A collection of paintings Artyom Kulimov finds beautiful.";
 ---
 
 <!doctype html>
@@ -91,11 +79,18 @@ const description = opened
     <meta name="description" content={description}>
     <meta name="theme-color" content="#000000">
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)}>
+    <link
+      rel="preload"
+      href="/fonts/switzer-400.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    >
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500&family=Geist+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap"
     >
   </head>
   <body>
@@ -103,7 +98,7 @@ const description = opened
       <div
         class="sheet"
         id="sheet"
-        style={`--dh-elev:${desk.height};--mh-elev:${mob.height};--dpm:2.4;--mpm:1.45`}
+        style={`--dh-elev:${desk.height};--mh-elev:${mob.height}`}
       >
         <!-- The grid: lettered axes, the same on every view. -->
         <div class="grid" aria-hidden="true">
@@ -123,34 +118,30 @@ const description = opened
           <header class="hero">
             <div class="ko hero-main">
               <p class="mono label">art.artyomkulimov.com</p>
-              <h1>Paintings</h1>
-              <p class="lede">
-                A small, slowly growing collection of paintings I find
-                beautiful, drawn to scale and hung the way a museum would:
-                centred 145&nbsp;cm above the floor.
-              </p>
+              <h1>paintings</h1>
+              <p class="lede">a collection of paintings i find beautiful.</p>
             </div>
             <dl class="ko hero-meta mono">
               <div>
-                <dt>Works</dt>
+                <dt>works</dt>
                 <dd>{total}</dd>
               </div>
               <div>
-                <dt>Period</dt>
+                <dt>period</dt>
                 <dd>{span}</dd>
               </div>
               <div>
-                <dt>Hang</dt>
-                <dd>{HANG * 100} cm on centre</dd>
+                <dt>rights</dt>
+                <dd>{rights}</dd>
               </div>
               <div>
-                <dt>Revised</dt>
-                <dd>{stamp}</dd>
+                <dt>hang</dt>
+                <dd>{HANG * 100} cm on centre</dd>
               </div>
             </dl>
           </header>
 
-          <section class="elev" aria-label="The paintings, hung to scale">
+          <section class="elev" aria-label="The paintings">
             {walls.map((w) => (
                 <div class={`wall ${w.cls}`} aria-hidden="true">
                   <span class="wall-name ko mono" style={`top:calc(${w.top} * var(--cell))`}>
@@ -158,16 +149,16 @@ const description = opened
                   </span>
                   <i class="datum" style={`top:calc(${w.datum} * var(--cell))`} />
                   <span class="level mono" style={`top:calc(${w.datum} * var(--cell))`}>
-                    <b class="ko">+{HANG.toFixed(2)}</b>
+                    <b>+{HANG.toFixed(2)}</b>
                   </span>
                   <i class="floor" style={`top:calc(${w.floor} * var(--cell))`} />
                   <span class="level mono" style={`top:calc(${w.floor} * var(--cell))`}>
-                    <b class="ko">±0.00</b>
+                    <b>±0.00</b>
                   </span>
-                  {w.axes.map((h) => (
+                  {w.hung.map((h) => (
                     <i
                       class="leader"
-                      style={`left:calc(${h.cx} * var(--cell));top:calc(${h.y + h.h} * var(--cell));height:calc(${w.tags - h.y - h.h} * var(--cell) - 12px)`}
+                      style={`left:calc(${h.cx} * var(--cell));top:calc(${w.tags} * var(--cell) + 12px);height:calc(${h.y - w.tags} * var(--cell) - 12px)`}
                     />
                   ))}
                 </div>
@@ -176,10 +167,19 @@ const description = opened
             {paintings.map((p, i) => {
                 const d = desk.hung[i];
                 const m = mob.hung[i];
-                const dTag = desk.walls[d.wall].tags;
-                const mTag = mob.walls[m.wall].tags;
                 return (
                   <>
+                    <a
+                      class="tag at"
+                      href={`/${p.id}/`}
+                      data-i={i}
+                      tabindex="-1"
+                      aria-label={`No. ${pad(i + 1)}: ${p.title}`}
+                      style={`${at({ x: d.cx, y: desk.walls[d.wall].tags, w: 0, h: 0 }, { x: m.cx, y: mob.walls[m.wall].tags, w: 0, h: 0 })};--i:${i}`}
+                    >
+                      <span class="tag-no mono">{pad(i + 1)}</span>
+                      <span class="tag-name ko">{p.title}</span>
+                    </a>
                     <a
                       class:list={["work at", { away: i === openIndex }]}
                       href={`/${p.id}/`}
@@ -197,8 +197,8 @@ const description = opened
                           widths={[320, 480, 640, 800, 1000, 1280]}
                           sizes={`(max-width: 760px) ${Math.ceil((m.w / M_COLS) * 94)}vw, ${Math.ceil((d.w / D_COLS) * 94)}vw`}
                           alt=""
-                          loading={i < 4 ? "eager" : "lazy"}
-                          fetchpriority={i === 0 ? "high" : "auto"}
+                          loading={i < 6 ? "eager" : "lazy"}
+                          fetchpriority={i < 3 ? "high" : "auto"}
                           decoding="async"
                           draggable="false"
                         />
@@ -210,31 +210,19 @@ const description = opened
                         <b class="ko">{fmt(sizes[i].h)}</b>
                       </span>
                     </a>
-                    <a
-                      class="tag at"
-                      href={`/${p.id}/`}
-                      data-i={i}
-                      tabindex="-1"
-                      aria-label={`No. ${pad(i + 1)}: ${p.title}`}
-                      style={`${at({ x: d.cx, y: dTag, w: 0, h: 0 }, { x: m.cx, y: mTag, w: 0, h: 0 })};--i:${i}`}
-                    >
-                      <span class="tag-no mono">{pad(i + 1)}</span>
-                      <span class="tag-name ko mono">{p.title}</span>
-                    </a>
                   </>
                 );
               })}
           </section>
 
           <section class="schedule" aria-label="Schedule of works">
-            <p class="ko mono label sched-title">Schedule of works</p>
+            <p class="ko mono label sched-title">schedule of works</p>
             <div class="row head mono" aria-hidden="true">
-              <span class="c-no">No.</span>
-              <span class="c-title">Title</span>
-              <span class="c-artist">Artist, year</span>
-              <span class="c-medium">Medium</span>
-              <span class="c-size">Size</span>
-              <span class="c-rights">Rights</span>
+              <span class="c-no">no.</span>
+              <span class="c-title">title</span>
+              <span class="c-artist">artist, year</span>
+              <span class="c-medium">medium</span>
+              <span class="c-size">size</span>
             </div>
             {paintings.map((p, i) => (
                 <a class="row" href={`/${p.id}/`} data-i={i}>
@@ -245,19 +233,9 @@ const description = opened
                   </span>
                   <span class="c-medium">{mediumOf(p.medium)}</span>
                   <span class="c-size mono">{dims(i)}</span>
-                  <span class="c-rights">{p.rights}</span>
                 </a>
               ))}
           </section>
-
-          <footer class="foot mono">
-            <span class="ko">Kept by Artyom Kulimov</span>
-            <span class="ko scale">
-              <i class="bar"></i>
-              <span>1 m</span>
-            </span>
-            <span class="ko">Images via Wikimedia Commons</span>
-          </footer>
         </div>
       </div>
     </main>
@@ -279,9 +257,9 @@ const description = opened
               class="detail"
               data-i={i}
               data-id={p.id}
-              data-title={p.title}
+              data-title={p.title.toLowerCase()}
               hidden={i !== openIndex}
-              style={`--ar:${p.image.width / p.image.height}`}
+              style={`--ar:${aspects[i]}`}
               aria-label={p.title}
             >
               <div class="stage">
@@ -307,49 +285,50 @@ const description = opened
               </div>
               <div class="info ko">
                 <p class="mono label">
-                  No. {pad(i + 1)} <span class="faint">/ {total}</span>
+                  no. {pad(i + 1)} <span class="faint">/ {total}</span>
                 </p>
                 <h2>{p.title}</h2>
                 <p class="by">
                   {p.artist}, {p.year}
                 </p>
+                {p.story && <p class="story">{p.story}</p>}
                 <dl class="spec">
                   <div>
-                    <dt class="mono">Medium</dt>
+                    <dt class="mono">medium</dt>
                     <dd>{mediumOf(p.medium)}</dd>
                   </div>
                   <div>
-                    <dt class="mono">Size</dt>
+                    <dt class="mono">size</dt>
                     <dd>{dims(i)}</dd>
                   </div>
                   <div>
-                    <dt class="mono">Held at</dt>
+                    <dt class="mono">held at</dt>
                     <dd>{p.location}</dd>
                   </div>
                   <div>
-                    <dt class="mono">Rights</dt>
+                    <dt class="mono">rights</dt>
                     <dd>{p.rights}</dd>
                   </div>
                   <div>
-                    <dt class="mono">Image</dt>
+                    <dt class="mono">image</dt>
                     <dd>{p.source}</dd>
                   </div>
                 </dl>
-                <a class="orig mono" href={p.original} target="_blank" rel="noopener">
-                  Full-resolution original <span aria-hidden="true">↗</span>
+                <a class="orig" href={p.original} target="_blank" rel="noopener">
+                  full-resolution original <span aria-hidden="true">↗</span>
                 </a>
               </div>
             </section>
           ))}
 
-        <div class="vbar mono">
+        <div class="vbar">
           <button type="button" class="ko vb-back" data-close>
-            ← The wall
+            ← the wall
           </button>
           <span class="ko vb-ret">
             <span
-              ><span class="on-wheel">Scroll down</span
-              ><span class="on-touch">Swipe up</span>
+              ><span class="on-wheel">scroll down</span
+              ><span class="on-touch">swipe up</span>
               to put it back</span
             >
             <i class="ret-bar"><b></b></i>
@@ -358,7 +337,10 @@ const description = opened
             <button type="button" data-step="-1" aria-label="Previous painting">
               ←
             </button>
-            <span id="vnum">{pad(Math.max(0, openIndex) + 1)} / {total}</span>
+            <span id="vnum" class="mono"
+              >{pad(Math.max(0, openIndex) + 1)}
+              / {total}</span
+            >
             <button type="button" data-step="1" aria-label="Next painting">
               →
             </button>
@@ -368,6 +350,24 @@ const description = opened
     </div>
 
     <style is:global>
+      @font-face {
+        font-family: "Switzer";
+        src: url("/fonts/switzer-300.woff2") format("woff2");
+        font-weight: 300;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Switzer";
+        src: url("/fonts/switzer-400.woff2") format("woff2");
+        font-weight: 400;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Switzer";
+        src: url("/fonts/switzer-500.woff2") format("woff2");
+        font-weight: 500;
+        font-display: swap;
+      }
       * {
         box-sizing: border-box;
         margin: 0;
@@ -376,8 +376,8 @@ const description = opened
         --bg: #000;
         --ink: #ecebe5;
         --soft: #bebcb3;
-        --dim: #7f7d76;
-        --faint: #4d4c47;
+        --dim: #84827a;
+        --faint: #55534d;
         --axis: #262624;
         --line: #1f1f1d;
         --gut: 48px;
@@ -398,9 +398,10 @@ const description = opened
       }
       body {
         overflow-x: hidden;
-        font-family: "Geist", system-ui, sans-serif;
+        font-family: "Switzer", system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
         color: var(--ink);
+        text-transform: lowercase;
       }
       a {
         color: inherit;
@@ -419,9 +420,8 @@ const description = opened
       }
       .mono {
         font-family: "Geist Mono", ui-monospace, monospace;
-        font-size: 10.5px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        font-size: 11px;
+        letter-spacing: 0.01em;
       }
       .label {
         color: var(--dim);
@@ -439,10 +439,9 @@ const description = opened
         container-type: inline-size;
       }
       .sheet {
-        --pm: var(--dpm);
         position: relative;
         width: calc(var(--cell) * var(--cols));
-        padding-bottom: calc(var(--cell) * 0.5);
+        padding-bottom: calc(var(--cell) * 1);
         margin: 0 auto;
       }
       .view {
@@ -510,9 +509,10 @@ const description = opened
         place-items: center;
         width: 21px;
         height: 21px;
-        font-size: 9px;
+        padding-bottom: 1px;
+        font-size: 10px;
+        line-height: 1;
         color: var(--faint);
-        letter-spacing: 0;
         background: var(--bg);
         border: 1px solid #353431;
         border-radius: 50%;
@@ -553,19 +553,18 @@ const description = opened
         margin-left: 1px;
       }
       h1 {
-        margin: 22px 0 26px -0.05em;
-        font-size: clamp(52px, calc(var(--cell) * 1.02), 150px);
+        margin: 22px 0 22px -0.05em;
+        font-size: clamp(56px, calc(var(--cell) * 1.08), 156px);
         font-weight: 400;
         line-height: 0.9;
-        letter-spacing: -0.05em;
+        letter-spacing: -0.055em;
       }
       .lede {
-        max-width: 31em;
-        font-size: clamp(15px, calc(var(--cell) * 0.15), 19px);
+        font-size: clamp(16px, calc(var(--cell) * 0.17), 21px);
         font-weight: 300;
-        line-height: 1.55;
+        line-height: 1.45;
         color: var(--soft);
-        text-wrap: pretty;
+        letter-spacing: -0.01em;
       }
       .hero-meta {
         grid-column: 10 / span 3;
@@ -643,7 +642,7 @@ const description = opened
       .level {
         position: absolute;
         left: 0;
-        font-size: 9.5px;
+        font-size: 10px;
         color: var(--dim);
         animation: fade 1s 1.2s both;
       }
@@ -653,7 +652,6 @@ const description = opened
         bottom: 3px;
         font-weight: 400;
         white-space: nowrap;
-        background: none;
       }
       /* the level triangle, tip on the line at the sheet's edge */
       .level::after {
@@ -725,15 +723,14 @@ const description = opened
         outline-offset: 5px;
       }
 
-      /* Dimension lines with architectural slash ticks. */
+      /* Dimension lines with architectural slash ticks: width below, height right. */
       .dim {
         position: absolute;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 9.5px;
-        color: #4f4e49;
-        letter-spacing: 0.04em;
+        font-size: 10px;
+        color: #55534d;
         pointer-events: none;
         transition: color 0.6s;
         animation: fade 1s calc(1.3s + var(--i, 0) * 0.14s) both;
@@ -754,8 +751,8 @@ const description = opened
         line-height: 1;
       }
       .dim-w {
-        top: -16px;
         right: 0;
+        bottom: -17px;
         left: 0;
         height: 1px;
         background:
@@ -770,7 +767,7 @@ const description = opened
       }
       .dim-h {
         top: 0;
-        right: -16px;
+        right: -17px;
         bottom: 0;
         width: 1px;
         background:
@@ -791,7 +788,7 @@ const description = opened
         color: #a9a69c;
       }
 
-      /* Numbered tags on the tag line. */
+      /* Numbered tags along the top of each wall. */
       .tag {
         display: flex;
         align-items: center;
@@ -804,9 +801,8 @@ const description = opened
         width: 24px;
         height: 24px;
         margin-left: -12px;
-        font-size: 9px;
+        font-size: 9.5px;
         color: var(--dim);
-        letter-spacing: 0;
         background: var(--bg);
         border: 1px solid #45443f;
         border-radius: 50%;
@@ -816,9 +812,11 @@ const description = opened
           border-color 0.4s;
       }
       .tag-name {
-        padding: 4px 12px 4px 8px;
+        padding: 3px 12px 4px 8px;
         margin-left: 4px;
+        font-size: 14px;
         color: var(--dim);
+        letter-spacing: -0.005em;
         white-space: nowrap;
         transition: color 0.4s;
       }
@@ -855,7 +853,7 @@ const description = opened
       }
       .row > span {
         min-width: 0;
-        padding: 15px var(--pad);
+        padding: 16px var(--pad);
         line-height: 1.45;
         border-left: 1px solid var(--line);
       }
@@ -865,12 +863,12 @@ const description = opened
         color: var(--faint);
       }
       .row:not(.head) {
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 300;
         color: var(--soft);
       }
       .row .mono {
-        font-size: 10.5px;
+        font-size: 11px;
       }
       .c-no {
         grid-column: 1 / span 1;
@@ -879,23 +877,20 @@ const description = opened
         grid-column: 2 / span 3;
       }
       .c-artist {
-        grid-column: 5 / span 2;
+        grid-column: 5 / span 3;
       }
       .c-medium {
-        grid-column: 7 / span 2;
+        grid-column: 8 / span 3;
       }
       .c-size {
-        grid-column: 9 / span 2;
-      }
-      .c-rights {
         grid-column: 11 / span 2;
         border-right: 1px solid var(--line);
       }
       .row:not(.head) .c-title {
-        font-size: 17px;
+        font-size: 18px;
         font-weight: 400;
         color: var(--ink);
-        letter-spacing: -0.01em;
+        letter-spacing: -0.015em;
       }
       .row:not(.head).hot,
       .row:not(.head):focus-visible {
@@ -904,40 +899,6 @@ const description = opened
       }
       .row.hot .c-no {
         color: var(--ink);
-      }
-
-      .foot {
-        display: grid;
-        grid-template-columns: repeat(var(--cols), var(--cell));
-        margin-top: calc(var(--cell) * 0.6);
-        color: var(--faint);
-        animation: fade 1.2s 1.1s both;
-      }
-      .foot > span {
-        padding: 8px var(--pad);
-        margin-left: 1px;
-      }
-      .foot > span:nth-child(1) {
-        grid-column: 1 / span 4;
-      }
-      .foot > span:nth-child(2) {
-        grid-column: 6 / span 3;
-      }
-      .foot > span:nth-child(3) {
-        grid-column: 10 / span 3;
-      }
-      .scale {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-      }
-      .bar {
-        display: block;
-        width: calc(var(--cell) * var(--pm));
-        height: 5px;
-        background:
-          linear-gradient(90deg, #5d5b55 50%, transparent 50%) 0 0 / 50% 100%;
-        border: 1px solid #5d5b55;
       }
 
       /* ---------- detail view: same grid, painting in front ---------- */
@@ -1001,10 +962,10 @@ const description = opened
         animation: none;
       }
       .fig .dim-w {
-        top: -20px;
+        bottom: -21px;
       }
       .fig .dim-h {
-        right: -20px;
+        right: -21px;
       }
       .info {
         position: absolute;
@@ -1015,35 +976,42 @@ const description = opened
       }
       .info h2 {
         margin: 18px 0 10px;
-        font-size: clamp(30px, calc(var(--cell) * 0.4), 52px);
+        font-size: clamp(32px, calc(var(--cell) * 0.42), 54px);
         font-weight: 400;
-        line-height: 1.02;
-        letter-spacing: -0.035em;
+        line-height: 1;
+        letter-spacing: -0.045em;
         text-wrap: balance;
       }
       .by {
-        font-size: 16px;
+        font-size: 17px;
         font-weight: 300;
         color: var(--soft);
       }
+      .story {
+        margin-top: 22px;
+        font-size: 14.5px;
+        font-weight: 300;
+        line-height: 1.55;
+        color: var(--soft);
+        text-wrap: pretty;
+      }
       .spec {
-        margin-top: 30px;
+        margin-top: 26px;
         border-top: 1px solid var(--line);
       }
       .spec div {
         display: grid;
         grid-template-columns: 70px 1fr;
         gap: 12px;
-        padding: 10px 0;
+        padding: 9px 0;
         border-bottom: 1px solid var(--line);
       }
       .spec dt {
         padding-top: 2px;
-        font-size: 9.5px;
         color: var(--faint);
       }
       .spec dd {
-        font-size: 13px;
+        font-size: 13.5px;
         font-weight: 300;
         line-height: 1.45;
         color: var(--soft);
@@ -1052,7 +1020,8 @@ const description = opened
         display: inline-flex;
         gap: 8px;
         padding-bottom: 4px;
-        margin-top: 26px;
+        margin-top: 24px;
+        font-size: 15px;
         color: var(--ink);
         border-bottom: 1px solid #5d5b55;
         transition: border-color 0.3s;
@@ -1069,6 +1038,7 @@ const description = opened
         display: grid;
         grid-template-columns: repeat(var(--cols), var(--cell));
         align-items: center;
+        font-size: 14px;
         color: var(--dim);
       }
       .vbar > * {
@@ -1112,6 +1082,7 @@ const description = opened
         display: flex;
         grid-column: 11 / span 2;
         gap: 14px;
+        align-items: center;
         justify-self: end;
         font-variant-numeric: tabular-nums;
       }
@@ -1159,9 +1130,6 @@ const description = opened
           --pad: 12px;
           --strip: 40px;
         }
-        .sheet {
-          --pm: var(--mpm);
-        }
         .d-only {
           display: none;
         }
@@ -1181,20 +1149,17 @@ const description = opened
           grid-column: 1 / -1;
         }
         h1 {
-          font-size: 60px;
+          font-size: 64px;
         }
         .hero-meta {
           grid-column: 1 / -1;
           margin-top: 8px;
         }
-        .tag-name {
-          display: none;
-        }
         .level b {
           display: none;
         }
         .row > span {
-          padding: 12px var(--pad);
+          padding: 13px var(--pad);
         }
         .c-no {
           grid-column: 1 / span 1;
@@ -1205,15 +1170,8 @@ const description = opened
         }
         .c-artist,
         .c-medium,
-        .c-size,
-        .c-rights {
+        .c-size {
           display: none;
-        }
-        .foot {
-          grid-template-columns: 1fr;
-        }
-        .foot > span:nth-child(n) {
-          grid-column: 1;
         }
         .stage {
           top: 34px;
@@ -1221,22 +1179,25 @@ const description = opened
           bottom: auto;
           left: 0;
           height: min(
-            48svh,
+            46svh,
             calc((100cqw - 2 * var(--gut) - 22px) / var(--ar))
           );
         }
         .info {
           top: calc(
             34px +
-            min(48svh, calc((100cqw - 2 * var(--gut) - 22px) / var(--ar))) +
-            18px
+            min(46svh, calc((100cqw - 2 * var(--gut) - 22px) / var(--ar))) +
+            26px
           );
           width: calc(var(--cell) * 4 - 1px);
           padding-top: var(--pad);
         }
         .info h2 {
           margin: 10px 0 6px;
-          font-size: 30px;
+          font-size: 32px;
+        }
+        .story {
+          margin-top: 14px;
         }
         .spec {
           margin-top: 16px;

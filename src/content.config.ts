@@ -29,6 +29,8 @@ const paintings = defineCollection({
       rights: z.string(),
       source: z.string(),
       original: z.url(),
+      /** Why this painting is in the collection. */
+      story: z.string().optional(),
       image: image(),
       palette: z.array(z.string()).min(1),
       details: z.array(detail).default([]),

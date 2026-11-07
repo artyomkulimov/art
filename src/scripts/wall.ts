@@ -170,10 +170,16 @@ const open = (i: number, push = true) => {
     return;
   }
   fig
-    .animate([{ transform: flip(from, to) }, { transform: "none" }], {
-      duration: 760,
-      easing: EASE,
-    })
+    .animate(
+      [
+        { transform: flip(from, to), filter: "brightness(0.88)" },
+        { transform: "none", filter: "none" },
+      ],
+      {
+        duration: 760,
+        easing: EASE,
+      }
+    )
     .finished.catch(() => undefined)
     .then(() => {
       busy = false;
@@ -187,6 +193,11 @@ const close = () => {
   busy = true;
   const i = current;
   const fig = figOf(i);
+  // Freeze the scroll-to-return nudge where it is, so nothing else moves the
+  // painting while it flies home (otherwise it lands off and snaps).
+  const detail = details[i];
+  detail.style.transition = "none";
+  detail.style.transform = getComputedStyle(detail).transform;
   const from = fig.getBoundingClientRect();
   const to = frameOf(i).getBoundingClientRect();
   view.classList.remove("in");
@@ -198,6 +209,8 @@ const close = () => {
     for (const a of fig.getAnimations()) {
       a.cancel();
     }
+    detail.style.removeProperty("transition");
+    detail.style.removeProperty("transform");
     progress(0);
     current = -1;
     busy = false;
@@ -209,11 +222,17 @@ const close = () => {
     return;
   }
   fig
-    .animate([{ transform: "none" }, { transform: flip(to, from) }], {
-      duration: 680,
-      easing: EASE,
-      fill: "forwards",
-    })
+    .animate(
+      [
+        { transform: "none", filter: "none" },
+        { transform: flip(to, from), filter: "brightness(0.88)" },
+      ],
+      {
+        duration: 680,
+        easing: EASE,
+        fill: "forwards",
+      }
+    )
     .finished.catch(() => undefined)
     .then(done);
 };
