@@ -1,14 +1,14 @@
 ---
 /**
- * The site: every painting on one engineering-style sheet. The sheet can be
- * dragged around and springs back home when left alone. Clicking a painting
- * lifts it into a detail view (/<id>/); scrolling down drops it back onto the
- * sheet. `open` renders a painting's detail view already open, for direct links.
+ * The site. One architectural drawing: lettered grid axes run down the whole
+ * page, the paintings hang to scale on wall elevations, and a schedule below
+ * lists every work. Clicking a painting opens it in place — the grid stays put,
+ * everything else steps aside — and scrolling down puts it back. `open`
+ * renders a painting already open, for its own address (/<id>/).
  */
 import { Picture } from "astro:assets";
-import { asciiOf } from "@/lib/ascii";
-import { getPaintings, imagePathOf } from "@/lib/paintings";
-import { type Box, layout, plotOf, sizeOf } from "@/lib/sheet";
+import { getPaintings } from "@/lib/paintings";
+import { type Elevation, HANG, hang, sizeOf } from "@/lib/sheet";
 
 interface Props {
   open?: string;
@@ -24,65 +24,62 @@ const metres = paintings.map((p, i) => ({
   h: (sizes[i].w / 100) * (p.image.height / p.image.width),
 }));
 
-const DESK = layout(metres, {
-  cols: 12,
-  perMeter: 2.9,
-  hero: { x: 1, y: 1, w: 4, h: 3.5 },
+const D_COLS = 12;
+const M_COLS = 4;
+const desk = hang(metres, {
+  cols: D_COLS,
+  perMeter: 2.4,
   margin: 0.5,
-  foot: 1,
+  gap: 0.6,
+  step: 1,
 });
-const MOB = layout(metres, {
-  cols: 4,
-  perMeter: 1.6,
-  hero: { x: 0, y: 0.5, w: 4, h: 3.5 },
-  margin: 0.5,
-  foot: 2,
+const mob = hang(metres, {
+  cols: M_COLS,
+  perMeter: 1.45,
+  margin: 0.2,
+  gap: 0.35,
+  step: 0.5,
 });
 
-const pos = (d: Box, m: Box) =>
-  `--dx:${d.x};--dy:${d.y};--dw:${d.w};--dh:${d.h};--mx:${m.x};--my:${m.y};--mw:${m.w};--mh:${m.h}`;
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 const dims = (i: number) =>
   `${sizes[i].approx ? "≈ " : ""}${fmt(sizes[i].h)} × ${fmt(sizes[i].w)} cm`;
 const SIZE_IN_MEDIUM = /,?\s*\d[\d.]*\s*[×x]\s*\d[\d.]*\s*cm/;
 const mediumOf = (m: string) => m.replace(SIZE_IN_MEDIUM, "");
+const letter = (k: number) => String.fromCharCode(65 + k);
 
 const years = paintings
   .map((p) => Number.parseInt(p.year, 10))
   .filter(Number.isFinite);
-const span = years.length ? `${Math.min(...years)}–${Math.max(...years)}` : "";
+const span =
+  years.length > 0 ? `${Math.min(...years)}–${Math.max(...years)}` : "";
 const total = pad(paintings.length);
 const stamp = new Date().toISOString().slice(0, 7).replace("-", ".");
 
-// Footer strip: one ASCII slice per painting, widths in proportion to the real widths.
-const widthSum = sizes.reduce((a, s) => a + s.w, 0);
-const strips = await Promise.all(
-  paintings.map((p, i) =>
-    asciiOf(
-      imagePathOf(p.id),
-      p.title,
-      Math.ceil((230 * sizes[i].w) / widthSum)
-    )
-  )
-);
+/** Inline position for something placed in cells, with desktop and mobile values. */
+const at = (
+  d: { x: number; y: number; w: number; h: number },
+  m: { x: number; y: number; w: number; h: number }
+) =>
+  `--dx:${d.x};--dy:${d.y};--dw:${d.w};--dh:${d.h};--mx:${m.x};--my:${m.y};--mw:${m.w};--mh:${m.h}`;
 
-const plots = [
-  { i: -1, d: plotOf(DESK.hero), m: plotOf(MOB.hero) },
-  ...paintings.map((_, i) => ({
-    i,
-    d: plotOf(DESK.boxes[i]),
-    m: plotOf(MOB.boxes[i]),
-  })),
-];
+const wallsOf = (e: Elevation, cls: string) =>
+  e.walls.map((w, k) => ({
+    ...w,
+    k,
+    cls,
+    name: `Wall ${letter(k)}`,
+    axes: e.hung.filter((h) => h.wall === k),
+  }));
+const walls = [...wallsOf(desk, "d-only"), ...wallsOf(mob, "m-only")];
 
 const siteTitle = "Paintings — Artyom Kulimov";
-const title =
-  openIndex >= 0 ? `${paintings[openIndex].title} — ${siteTitle}` : siteTitle;
-const description =
-  openIndex >= 0
-    ? `${paintings[openIndex].title} by ${paintings[openIndex].artist}, ${paintings[openIndex].year}.`
-    : "A small, slowly growing collection of paintings Artyom Kulimov finds beautiful.";
+const opened = openIndex >= 0 ? paintings[openIndex] : undefined;
+const title = opened ? `${opened.title} — ${siteTitle}` : siteTitle;
+const description = opened
+  ? `${opened.title} by ${opened.artist}, ${opened.year}.`
+  : "A small, slowly growing collection of paintings Artyom Kulimov finds beautiful.";
 ---
 
 <!doctype html>
@@ -103,142 +100,165 @@ const description =
   </head>
   <body>
     <main class="page">
-      <div class="meta mono">
-        <span>art.artyomkulimov.com</span>
-        <span class="meta-mid">Sheet 01 — Paintings</span>
-        <span id="hud" class="hud">x ——— y ——— cm</span>
-      </div>
-
       <div
         class="sheet"
         id="sheet"
-        style={`--drows:${DESK.rows};--mrows:${MOB.rows};--dpm:${DESK.perMeter};--mpm:${MOB.perMeter}`}
-        data-dpm={DESK.perMeter}
-        data-mpm={MOB.perMeter}
+        style={`--dh-elev:${desk.height};--mh-elev:${mob.height};--dpm:2.4;--mpm:1.45`}
       >
-        <svg
-          class="arc"
-          viewBox="0 0 1000 100"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          <path
-            d="M 215 0 A 456 456 0 0 0 785 0"
-            vector-effect="non-scaling-stroke"
-          ></path>
-          <path
-            class="glint"
-            d="M 215 0 A 456 456 0 0 0 785 0"
-            pathLength="1000"
-            vector-effect="non-scaling-stroke"
-          ></path>
-        </svg>
-        <div class="grid" aria-hidden="true"></div>
-        <div class="ruler ruler-y" aria-hidden="true"><i></i></div>
-        <div class="ruler ruler-x" aria-hidden="true"><i></i></div>
+        <!-- The grid: lettered axes, the same on every view. -->
+        <div class="grid" aria-hidden="true">
+          {Array.from({ length: D_COLS + 1 }, (_, k) => (
+              <i class:list={["axis", { "d-only": k > M_COLS }]} data-k={k} style={`--k:${k}`} />
+            ))}
+        </div>
+        <div class="strip" aria-hidden="true">
+          {Array.from({ length: D_COLS + 1 }, (_, k) => (
+              <span class:list={["bubble mono", { "d-only": k > M_COLS }]} data-k={k} style={`--k:${k}`}>
+                {letter(k)}
+              </span>
+            ))}
+        </div>
 
-        {plots.map((pl) => (
-            <div class="plot at" data-i={pl.i} style={pos(pl.d, pl.m)} aria-hidden="true">
-              <i class="reg tl" />
-              <i class="reg tr" />
-              <i class="reg bl" />
-              <i class="reg br" />
+        <div class="content" id="content">
+          <header class="hero">
+            <div class="ko hero-main">
+              <p class="mono label">art.artyomkulimov.com</p>
+              <h1>Paintings</h1>
+              <p class="lede">
+                A small, slowly growing collection of paintings I find
+                beautiful, drawn to scale and hung the way a museum would:
+                centred 145&nbsp;cm above the floor.
+              </p>
             </div>
-          ))}
+            <dl class="ko hero-meta mono">
+              <div>
+                <dt>Works</dt>
+                <dd>{total}</dd>
+              </div>
+              <div>
+                <dt>Period</dt>
+                <dd>{span}</dd>
+              </div>
+              <div>
+                <dt>Hang</dt>
+                <dd>{HANG * 100} cm on centre</dd>
+              </div>
+              <div>
+                <dt>Revised</dt>
+                <dd>{stamp}</dd>
+              </div>
+            </dl>
+          </header>
 
-        <header class="hero at" style={pos(DESK.hero, MOB.hero)}>
-          <p class="mono eyebrow">{total} works · {span}</p>
-          <h1>Paintings</h1>
-          <p class="lede">
-            A small, slowly growing collection of paintings I find beautiful.
-          </p>
-          <a class="btn" href={`/${paintings[0].id}/`} data-open="0"
-            >Begin with {paintings[0].title}</a
-          >
-          <p class="mono hint">
-            <span class="fine">Drag the sheet around · click a painting</span>
-          </p>
-        </header>
-
-        {paintings.map((p, i) => {
-            const d = DESK.boxes[i];
-            const m = MOB.boxes[i];
-            return (
-              <a
-                class:list={["work at", { away: i === openIndex }]}
-                href={`/${p.id}/`}
-                data-i={i}
-                data-id={p.id}
-                style={`${pos(d, m)};--i:${i}`}
-                draggable="false"
-                aria-label={`${p.title}, ${p.artist}, ${p.year}`}
-              >
-                <span class="frame" style={`background-color:${p.palette[0]}`}>
-                  <Picture
-                    src={p.image}
-                    formats={["avif", "webp"]}
-                    widths={[320, 480, 640, 800, 1000, 1280, 1600]}
-                    sizes={`(max-width: 760px) ${Math.ceil((m.w / 4) * 94)}vw, ${Math.ceil((d.w / 12) * 94)}vw`}
-                    alt=""
-                    loading={d.y < 6 ? "eager" : "lazy"}
-                    fetchpriority={i === 0 ? "high" : "auto"}
-                    decoding="async"
-                    draggable="false"
-                  />
-                </span>
-                <span class="dim dim-w mono" aria-hidden="true">
-                  <b>{fmt(sizes[i].w)}</b>
-                </span>
-                <span class="dim dim-h mono" aria-hidden="true">
-                  <b>{fmt(sizes[i].h)}</b>
-                </span>
-                <span class="cap mono" aria-hidden="true">
-                  <span class="fig-no">Fig. {pad(i + 1)}</span> {p.title}
-                  <span class="cap-by">
-                    {p.artist}, {p.year}
+          <section class="elev" aria-label="The paintings, hung to scale">
+            {walls.map((w) => (
+                <div class={`wall ${w.cls}`} aria-hidden="true">
+                  <span class="wall-name ko mono" style={`top:calc(${w.top} * var(--cell))`}>
+                    {w.name} <span class="faint">· elevation</span>
                   </span>
-                </span>
-              </a>
-            );
-          })}
-
-        <footer class="foot at" style={pos(DESK.footer, MOB.footer)}>
-          <div class="strip" aria-hidden="true">
-            {strips.map((lines, i) => (
-                <div class="seg" data-i={i} style={`flex-grow:${sizes[i].w}`}>
-                  {lines.map((runs) => (
-                    <span class="ln">
-                      {runs.map((r) => (
-                        <span class={`t${r.tone}`}>{r.text}</span>
-                      ))}
-                    </span>
+                  <i class="datum" style={`top:calc(${w.datum} * var(--cell))`} />
+                  <span class="level mono" style={`top:calc(${w.datum} * var(--cell))`}>
+                    <b class="ko">+{HANG.toFixed(2)}</b>
+                  </span>
+                  <i class="floor" style={`top:calc(${w.floor} * var(--cell))`} />
+                  <span class="level mono" style={`top:calc(${w.floor} * var(--cell))`}>
+                    <b class="ko">±0.00</b>
+                  </span>
+                  {w.axes.map((h) => (
+                    <i
+                      class="leader"
+                      style={`left:calc(${h.cx} * var(--cell));top:calc(${h.y + h.h} * var(--cell));height:calc(${w.tags - h.y - h.h} * var(--cell) - 12px)`}
+                    />
                   ))}
                 </div>
               ))}
-          </div>
-          <dl class="tb mono">
-            <div>
-              <dt>Works</dt>
-              <dd>{total}</dd>
+
+            {paintings.map((p, i) => {
+                const d = desk.hung[i];
+                const m = mob.hung[i];
+                const dTag = desk.walls[d.wall].tags;
+                const mTag = mob.walls[m.wall].tags;
+                return (
+                  <>
+                    <a
+                      class:list={["work at", { away: i === openIndex }]}
+                      href={`/${p.id}/`}
+                      data-i={i}
+                      data-axis={d.cx}
+                      data-maxis={m.cx}
+                      style={`${at(d, m)};--i:${i}`}
+                      draggable="false"
+                      aria-label={`${p.title}, ${p.artist}, ${p.year}`}
+                    >
+                      <span class="frame" style={`background-color:${p.palette[0]}`}>
+                        <Picture
+                          src={p.image}
+                          formats={["avif", "webp"]}
+                          widths={[320, 480, 640, 800, 1000, 1280]}
+                          sizes={`(max-width: 760px) ${Math.ceil((m.w / M_COLS) * 94)}vw, ${Math.ceil((d.w / D_COLS) * 94)}vw`}
+                          alt=""
+                          loading={i < 4 ? "eager" : "lazy"}
+                          fetchpriority={i === 0 ? "high" : "auto"}
+                          decoding="async"
+                          draggable="false"
+                        />
+                      </span>
+                      <span class="dim dim-w mono" aria-hidden="true">
+                        <b class="ko">{fmt(sizes[i].w)}</b>
+                      </span>
+                      <span class="dim dim-h mono" aria-hidden="true">
+                        <b class="ko">{fmt(sizes[i].h)}</b>
+                      </span>
+                    </a>
+                    <a
+                      class="tag at"
+                      href={`/${p.id}/`}
+                      data-i={i}
+                      tabindex="-1"
+                      aria-label={`No. ${pad(i + 1)}: ${p.title}`}
+                      style={`${at({ x: d.cx, y: dTag, w: 0, h: 0 }, { x: m.cx, y: mTag, w: 0, h: 0 })};--i:${i}`}
+                    >
+                      <span class="tag-no mono">{pad(i + 1)}</span>
+                      <span class="tag-name ko mono">{p.title}</span>
+                    </a>
+                  </>
+                );
+              })}
+          </section>
+
+          <section class="schedule" aria-label="Schedule of works">
+            <p class="ko mono label sched-title">Schedule of works</p>
+            <div class="row head mono" aria-hidden="true">
+              <span class="c-no">No.</span>
+              <span class="c-title">Title</span>
+              <span class="c-artist">Artist, year</span>
+              <span class="c-medium">Medium</span>
+              <span class="c-size">Size</span>
+              <span class="c-rights">Rights</span>
             </div>
-            <div>
-              <dt>Period</dt>
-              <dd>{span}</dd>
-            </div>
-            <div class="tb-scale">
-              <dt>Scale</dt>
-              <dd><i class="bar"></i><span>50 cm</span></dd>
-            </div>
-            <div>
-              <dt>Kept by</dt>
-              <dd>A. Kulimov</dd>
-            </div>
-            <div>
-              <dt>Rev.</dt>
-              <dd>{stamp}</dd>
-            </div>
-          </dl>
-        </footer>
+            {paintings.map((p, i) => (
+                <a class="row" href={`/${p.id}/`} data-i={i}>
+                  <span class="c-no mono">{pad(i + 1)}</span>
+                  <span class="c-title">{p.title}</span>
+                  <span class="c-artist">
+                    {p.artist}, {p.year}
+                  </span>
+                  <span class="c-medium">{mediumOf(p.medium)}</span>
+                  <span class="c-size mono">{dims(i)}</span>
+                  <span class="c-rights">{p.rights}</span>
+                </a>
+              ))}
+          </section>
+
+          <footer class="foot mono">
+            <span class="ko">Kept by Artyom Kulimov</span>
+            <span class="ko scale">
+              <i class="bar"></i>
+              <span>1 m</span>
+            </span>
+            <span class="ko">Images via Wikimedia Commons</span>
+          </footer>
+        </div>
       </div>
     </main>
 
@@ -251,107 +271,99 @@ const description =
       role="dialog"
       aria-modal="true"
       aria-label="Painting"
+      tabindex="-1"
     >
-      <div class="vgrid" aria-hidden="true"></div>
-      <div class="vbar vtop mono">
-        <button type="button" class="vbtn" data-close>← The wall</button>
-        <span class="vnav">
-          <button
-            type="button"
-            class="vbtn"
-            data-step="-1"
-            aria-label="Previous painting"
-          >
-            ←
-          </button>
-          <span id="vnum">{pad(Math.max(0, openIndex) + 1)} / {total}</span>
-          <button
-            type="button"
-            class="vbtn"
-            data-step="1"
-            aria-label="Next painting"
-          >
-            →
-          </button>
-        </span>
-      </div>
+      <div class="vsheet">
+        {paintings.map((p, i) => (
+            <section
+              class="detail"
+              data-i={i}
+              data-id={p.id}
+              data-title={p.title}
+              hidden={i !== openIndex}
+              style={`--ar:${p.image.width / p.image.height}`}
+              aria-label={p.title}
+            >
+              <div class="stage">
+                <figure class="fig" style={`background-color:${p.palette[0]}`}>
+                  <Picture
+                    src={p.image}
+                    formats={["avif", "webp"]}
+                    widths={[800, 1200, 1600, 2000, 2600, 3200]}
+                    sizes="(max-width: 760px) 100vw, 75vw"
+                    alt={`${p.title} by ${p.artist}, ${p.year}`}
+                    loading={i === openIndex ? "eager" : "lazy"}
+                    fetchpriority={i === openIndex ? "high" : "auto"}
+                    decoding="async"
+                    draggable="false"
+                  />
+                  <span class="dim dim-w mono" aria-hidden="true">
+                    <b class="ko">{fmt(sizes[i].w)} cm</b>
+                  </span>
+                  <span class="dim dim-h mono" aria-hidden="true">
+                    <b class="ko">{fmt(sizes[i].h)} cm</b>
+                  </span>
+                </figure>
+              </div>
+              <div class="info ko">
+                <p class="mono label">
+                  No. {pad(i + 1)} <span class="faint">/ {total}</span>
+                </p>
+                <h2>{p.title}</h2>
+                <p class="by">
+                  {p.artist}, {p.year}
+                </p>
+                <dl class="spec">
+                  <div>
+                    <dt class="mono">Medium</dt>
+                    <dd>{mediumOf(p.medium)}</dd>
+                  </div>
+                  <div>
+                    <dt class="mono">Size</dt>
+                    <dd>{dims(i)}</dd>
+                  </div>
+                  <div>
+                    <dt class="mono">Held at</dt>
+                    <dd>{p.location}</dd>
+                  </div>
+                  <div>
+                    <dt class="mono">Rights</dt>
+                    <dd>{p.rights}</dd>
+                  </div>
+                  <div>
+                    <dt class="mono">Image</dt>
+                    <dd>{p.source}</dd>
+                  </div>
+                </dl>
+                <a class="orig mono" href={p.original} target="_blank" rel="noopener">
+                  Full-resolution original <span aria-hidden="true">↗</span>
+                </a>
+              </div>
+            </section>
+          ))}
 
-      {paintings.map((p, i) => (
-          <section
-            class="detail"
-            data-i={i}
-            data-title={p.title}
-            hidden={i !== openIndex}
-            style={`--ar:${p.image.width / p.image.height}`}
-            aria-label={p.title}
-          >
-            <div class="info">
-              <p class="mono eyebrow">
-                Fig. {pad(i + 1)} <span class="of">/ {total}</span>
-              </p>
-              <h2>{p.title}</h2>
-              <p class="by">
-                {p.artist}, {p.year}
-              </p>
-              <dl class="spec mono">
-                <div>
-                  <dt>Medium</dt>
-                  <dd>{mediumOf(p.medium)}</dd>
-                </div>
-                <div>
-                  <dt>Size</dt>
-                  <dd>{dims(i)}</dd>
-                </div>
-                <div>
-                  <dt>Held at</dt>
-                  <dd>{p.location}</dd>
-                </div>
-                <div>
-                  <dt>Rights</dt>
-                  <dd>{p.rights}</dd>
-                </div>
-                <div>
-                  <dt>Image</dt>
-                  <dd>{p.source}</dd>
-                </div>
-              </dl>
-              <a class="btn" href={p.original} target="_blank" rel="noopener">
-                Full-resolution original ↗
-              </a>
-            </div>
-            <div class="stage">
-              <figure class="fig" style={`background-color:${p.palette[0]}`}>
-                <Picture
-                  src={p.image}
-                  formats={["avif", "webp"]}
-                  widths={[800, 1200, 1600, 2000, 2600, 3200]}
-                  sizes="(max-width: 760px) 100vw, 66vw"
-                  alt={`${p.title} by ${p.artist}, ${p.year}`}
-                  loading={i === openIndex ? "eager" : "lazy"}
-                  fetchpriority={i === openIndex ? "high" : "auto"}
-                  decoding="async"
-                  draggable="false"
-                />
-                <span class="dim dim-w mono" aria-hidden="true">
-                  <b>{fmt(sizes[i].w)} cm</b>
-                </span>
-                <span class="dim dim-h mono" aria-hidden="true">
-                  <b>{fmt(sizes[i].h)} cm</b>
-                </span>
-              </figure>
-            </div>
-          </section>
-        ))}
-
-      <div class="vbar vbottom mono">
-        <span class="ret">
-          <span class="ret-txt"
-            ><span class="on-wheel">Scroll down</span
-            ><span class="on-touch">Swipe up</span>
-            to return to the wall</span
-          >
-          <i class="ret-bar"><b></b></i>
-        </span>
+        <div class="vbar mono">
+          <button type="button" class="ko vb-back" data-close>
+            ← The wall
+          </button>
+          <span class="ko vb-ret">
+            <span
+              ><span class="on-wheel">Scroll down</span
+              ><span class="on-touch">Swipe up</span>
+              to put it back</span
+            >
+            <i class="ret-bar"><b></b></i>
+          </span>
+          <span class="ko vb-nav">
+            <button type="button" data-step="-1" aria-label="Previous painting">
+              ←
+            </button>
+            <span id="vnum">{pad(Math.max(0, openIndex) + 1)} / {total}</span>
+            <button type="button" data-step="1" aria-label="Next painting">
+              →
+            </button>
+          </span>
+        </div>
       </div>
     </div>
 
@@ -362,15 +374,19 @@ const description =
       }
       :root {
         --bg: #000;
-        --ink: #edeadf;
-        --dim: #85827a;
-        --faint: #4b4944;
-        --row: #1b1b1a;
-        --col: #2b2a28;
-        --frame: #2b2a28;
-        --plot: #2a2927;
+        --ink: #ecebe5;
+        --soft: #bebcb3;
+        --dim: #7f7d76;
+        --faint: #4d4c47;
+        --axis: #262624;
+        --line: #1f1f1d;
         --gut: 48px;
+        --cols: 12;
+        --pad: 16px;
+        --strip: 44px;
         --ease: cubic-bezier(0.22, 1, 0.36, 1);
+        /* Resolved inside .page and .view, which both span the viewport. */
+        --cell: calc(min(100cqw - 2 * var(--gut), 1600px) / var(--cols));
         color-scheme: dark;
       }
       html {
@@ -394,12 +410,6 @@ const description =
         all: unset;
         cursor: pointer;
       }
-      .mono {
-        font-family: "Geist Mono", ui-monospace, monospace;
-        font-size: 10.5px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-      }
       img {
         display: block;
       }
@@ -407,83 +417,36 @@ const description =
         outline: 1px solid var(--ink);
         outline-offset: 3px;
       }
+      .mono {
+        font-family: "Geist Mono", ui-monospace, monospace;
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .label {
+        color: var(--dim);
+      }
+      .faint {
+        color: var(--faint);
+      }
+      /* Text masks the grid behind it, like lettering on a drawing. */
+      .ko {
+        background: var(--bg);
+      }
 
-      /* ---------- page + sheet ---------- */
+      /* ---------- page, sheet, grid ---------- */
       .page {
-        --cols: 12;
-        --cell: calc(min(100cqw - 2 * var(--gut), 1600px) / var(--cols));
-        --foot: 1;
-        padding: 0 0 var(--gut);
         container-type: inline-size;
       }
-      .meta {
-        display: grid;
-        grid-template-columns: 1fr auto 1fr;
-        align-items: start;
-        width: min(100cqw - 2 * var(--gut), 1600px);
-        height: calc(var(--cell) * 1.1);
-        padding-top: 22px;
-        margin: 0 auto;
-        color: var(--dim);
-      }
-      .meta-mid {
-        color: var(--faint);
-      }
-      .hud {
-        justify-self: end;
-        font-variant-numeric: tabular-nums;
-        color: var(--faint);
-        transition: color 0.4s;
-      }
-      .hud.live {
-        color: var(--dim);
-      }
-
       .sheet {
-        --rows: var(--drows);
         --pm: var(--dpm);
         position: relative;
         width: calc(var(--cell) * var(--cols));
-        height: calc(var(--cell) * var(--rows));
+        padding-bottom: calc(var(--cell) * 0.5);
         margin: 0 auto;
-        touch-action: pan-y;
-        cursor: grab;
-        -webkit-user-select: none;
-        user-select: none;
-        outline: 1px solid var(--frame);
       }
-      html.dragging,
-      html.dragging * {
-        cursor: grabbing !important;
-      }
-
-      .arc {
-        position: absolute;
-        bottom: 100%;
-        left: 0;
-        width: 100%;
-        height: calc(var(--cell) * 0.82);
-        overflow: visible;
-        pointer-events: none;
-        fill: none;
-      }
-      .arc path {
-        stroke: #2c2b29;
-        stroke-width: 1;
-      }
-      .arc .glint {
-        stroke: var(--ink);
-        stroke-opacity: 0.55;
-        stroke-dasharray: 70 930;
-        animation: glint 22s linear infinite;
-      }
-      @keyframes glint {
-        from {
-          stroke-dashoffset: 1000;
-        }
-        to {
-          stroke-dashoffset: 0;
-        }
+      .view {
+        container-type: inline-size;
       }
 
       .grid {
@@ -491,46 +454,34 @@ const description =
         inset: 0;
         pointer-events: none;
       }
-      .grid::before,
-      .grid::after {
+      .axis {
         position: absolute;
-        inset: 0;
-        content: "";
+        top: 0;
+        bottom: 0;
+        left: calc(var(--k) * var(--cell));
+        width: 1px;
+        background: repeating-linear-gradient(
+          to bottom,
+          var(--axis) 0 18px,
+          transparent 18px 23px,
+          var(--axis) 23px 25px,
+          transparent 25px 30px
+        );
+        transition: filter 0.6s;
+        animation: draw 1.8s calc(var(--k) * 45ms) cubic-bezier(0.6, 0, 0.2, 1)
+          both;
       }
-      /* columns: dashed */
-      .grid::before {
-        background:
-          linear-gradient(90deg, var(--col) 1px, transparent 1px) 0 0 /
-          var(--cell) 100%;
-        mask: repeating-linear-gradient(#000 0 4px, transparent 4px 9px);
-        animation: draw-down 1.8s cubic-bezier(0.65, 0, 0.2, 1) both;
+      .axis.near {
+        filter: brightness(1.7);
       }
-      /* rows: solid */
-      .grid::after {
-        background:
-          linear-gradient(var(--row) 1px, transparent 1px) 0 0 / 100%
-          var(--cell);
-        animation: draw-across 1.8s 0.15s cubic-bezier(0.65, 0, 0.2, 1) both;
-      }
-      @keyframes draw-down {
+      @keyframes draw {
         from {
           clip-path: inset(0 0 100% 0);
-        }
-      }
-      @keyframes draw-across {
-        from {
-          clip-path: inset(0 100% 0 0);
         }
       }
       @keyframes fade {
         from {
           opacity: 0;
-        }
-      }
-      @keyframes rise {
-        from {
-          opacity: 0;
-          transform: translateY(10px);
         }
       }
       @keyframes reveal {
@@ -539,57 +490,195 @@ const description =
         }
       }
 
-      .ruler {
-        position: absolute;
+      /* Lettered bubbles: they stay at the top while you scroll. */
+      .strip {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        height: var(--strip);
+        padding: 0 var(--gut);
+        margin: 0 calc(var(--gut) * -1);
         pointer-events: none;
+        background: var(--bg);
+        border-bottom: 1px solid var(--line);
       }
-      .ruler-y {
-        top: 0;
-        bottom: calc(var(--cell) * var(--foot));
-        left: 0;
-        width: 22px;
-        background:
-          linear-gradient(#3a3936 1px, transparent 1px) 0 0 / 7px
-          calc(var(--cell) / 8) repeat-y,
-          linear-gradient(#45443f 1px, transparent 1px) 0 0 / 13px
-          calc(var(--cell) / 2) repeat-y,
-          linear-gradient(#5a5852 1px, transparent 1px) 0 0 / 22px var(--cell)
-          repeat-y;
-        animation: fade 1.2s 0.6s both;
-      }
-      .ruler-x {
-        top: 0;
-        right: 0;
-        left: 0;
-        height: 7px;
-        background:
-          linear-gradient(90deg, #3a3936 1px, transparent 1px) 0 0 /
-          calc(var(--cell) / 4) 5px repeat-x;
-        animation: fade 1.2s 0.6s both;
-      }
-      .ruler i {
+      .bubble {
         position: absolute;
-        background: var(--ink);
-        opacity: 0;
-        transition: opacity 0.4s;
+        top: 50%;
+        left: calc(var(--gut) + var(--k) * var(--cell));
+        display: grid;
+        place-items: center;
+        width: 21px;
+        height: 21px;
+        font-size: 9px;
+        color: var(--faint);
+        letter-spacing: 0;
+        background: var(--bg);
+        border: 1px solid #353431;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition:
+          color 0.5s,
+          border-color 0.5s;
+        animation: fade 1s calc(0.3s + var(--k) * 45ms) both;
       }
-      .ruler-y i {
-        top: var(--cy, 0);
-        left: 0;
-        width: 26px;
-        height: 1px;
+      .bubble.near {
+        color: var(--dim);
+        border-color: #4a4945;
       }
-      .ruler-x i {
-        top: 0;
-        left: var(--cx, 0);
-        width: 1px;
-        height: 12px;
-      }
-      .sheet.aim .ruler i {
-        opacity: 0.7;
+      .bubble.lit {
+        color: var(--ink);
+        border-color: #8a877f;
       }
 
-      /* every positioned thing lives in grid cells */
+      .content {
+        position: relative;
+        transition: opacity 0.45s var(--ease);
+      }
+      html.is-open .content {
+        pointer-events: none;
+        opacity: 0;
+      }
+
+      /* ---------- hero ---------- */
+      .hero {
+        display: grid;
+        grid-template-columns: repeat(var(--cols), var(--cell));
+        padding-top: calc(var(--cell) * 0.55);
+        animation: fade 1.2s 0.4s both;
+      }
+      .hero-main {
+        grid-column: 1 / span 7;
+        padding: var(--pad) var(--pad) calc(var(--pad) * 1.5);
+        margin-left: 1px;
+      }
+      h1 {
+        margin: 22px 0 26px -0.05em;
+        font-size: clamp(52px, calc(var(--cell) * 1.02), 150px);
+        font-weight: 400;
+        line-height: 0.9;
+        letter-spacing: -0.05em;
+      }
+      .lede {
+        max-width: 31em;
+        font-size: clamp(15px, calc(var(--cell) * 0.15), 19px);
+        font-weight: 300;
+        line-height: 1.55;
+        color: var(--soft);
+        text-wrap: pretty;
+      }
+      .hero-meta {
+        grid-column: 10 / span 3;
+        align-self: end;
+        padding: var(--pad);
+        margin-left: 1px;
+      }
+      .hero-meta div {
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        padding: 9px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .hero-meta div:last-child {
+        border-bottom: 0;
+      }
+      .hero-meta dt {
+        color: var(--faint);
+      }
+      .hero-meta dd {
+        color: var(--soft);
+      }
+
+      /* ---------- elevation ---------- */
+      .elev {
+        position: relative;
+        height: calc(var(--dh-elev) * var(--cell));
+        margin-top: calc(var(--cell) * 0.5);
+      }
+      .wall {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .wall-name {
+        position: absolute;
+        left: 1px;
+        padding: 4px var(--pad);
+        color: var(--dim);
+        animation: fade 1s 0.8s both;
+      }
+      .datum {
+        position: absolute;
+        right: 0;
+        left: 0;
+        height: 1px;
+        background: repeating-linear-gradient(
+          to right,
+          #2e2d2a 0 18px,
+          transparent 18px 23px,
+          #2e2d2a 23px 25px,
+          transparent 25px 30px
+        );
+        animation: draw-x 1.6s 0.5s cubic-bezier(0.6, 0, 0.2, 1) both;
+      }
+      .floor {
+        position: absolute;
+        right: 0;
+        left: 0;
+        height: 13px;
+        background: repeating-linear-gradient(
+          -45deg,
+          #24231f 0 1px,
+          transparent 1px 7px
+        );
+        border-top: 1px solid #55534d;
+        animation: draw-x 1.6s 0.35s cubic-bezier(0.6, 0, 0.2, 1) both;
+      }
+      @keyframes draw-x {
+        from {
+          clip-path: inset(0 100% 0 0);
+        }
+      }
+      .level {
+        position: absolute;
+        left: 0;
+        font-size: 9.5px;
+        color: var(--dim);
+        animation: fade 1s 1.2s both;
+      }
+      .level b {
+        position: absolute;
+        right: 9px;
+        bottom: 3px;
+        font-weight: 400;
+        white-space: nowrap;
+        background: none;
+      }
+      /* the level triangle, tip on the line at the sheet's edge */
+      .level::after {
+        position: absolute;
+        bottom: 0;
+        left: -5px;
+        content: "";
+        border: 5px solid transparent;
+        border-top: 7px solid #6a6862;
+        border-bottom: 0;
+      }
+      .leader {
+        position: absolute;
+        width: 1px;
+        background: #3a3935;
+        transform-origin: top;
+        animation: grow 0.9s calc(1.2s + var(--i, 0) * 0.12s) var(--ease) both;
+      }
+      @keyframes grow {
+        from {
+          transform: scaleY(0);
+        }
+      }
+
+      /* everything placed in grid cells */
       .at {
         --x: var(--dx);
         --y: var(--dy);
@@ -602,488 +691,295 @@ const description =
         height: calc(var(--h) * var(--cell));
       }
 
-      .plot {
-        margin: 0 -1px -1px 0;
-        pointer-events: none;
-        border: 1px solid var(--plot);
-        transition: border-color 0.6s;
-        animation: fade 1.4s 0.9s both;
-      }
-      .plot.hot {
-        border-color: #3e3d39;
-      }
-      .reg {
-        position: absolute;
-        width: 7px;
-        height: 7px;
-        background: var(--bg);
-        border: 1px solid #3d3c38;
-        transition:
-          border-color 0.5s,
-          background-color 0.5s;
-      }
-      .reg.tl {
-        top: -4px;
-        left: -4px;
-      }
-      .reg.tr {
-        top: -4px;
-        right: -4px;
-      }
-      .reg.bl {
-        bottom: -4px;
-        left: -4px;
-      }
-      .reg.br {
-        right: -4px;
-        bottom: -4px;
-      }
-      .plot.hot .reg {
-        border-color: var(--ink);
-      }
-
-      /* ---------- hero ---------- */
-      .hero {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        padding: calc(var(--cell) * 0.4) calc(var(--cell) * 0.36);
-        animation: rise 1.2s 0.5s var(--ease) both;
-      }
-      .eyebrow {
-        color: var(--dim);
-      }
-      h1 {
-        margin: 0.32em 0 0.34em -0.04em;
-        font-size: clamp(44px, calc(var(--cell) * 0.86), 128px);
-        font-weight: 400;
-        line-height: 0.95;
-        letter-spacing: -0.045em;
-      }
-      .lede {
-        max-width: 25em;
-        font-size: clamp(15px, calc(var(--cell) * 0.165), 20px);
-        font-weight: 300;
-        line-height: 1.5;
-        color: #c9c6bb;
-      }
-      .btn {
-        display: inline-flex;
-        gap: 10px;
-        align-items: center;
-        padding: 11px 16px 12px;
-        margin-top: 26px;
-        font-size: 15px;
-        color: #0b0b0a;
-        letter-spacing: -0.01em;
-        white-space: nowrap;
-        background: var(--ink);
-        border-radius: 3px;
-        transition: background-color 0.3s;
-      }
-      .btn:hover {
-        background: #fff;
-      }
-      .hint {
-        margin-top: auto;
-        color: var(--faint);
-      }
-
-      /* ---------- works ---------- */
       .work {
         display: block;
-        cursor: inherit;
         -webkit-user-drag: none;
       }
       .frame {
         position: absolute;
         inset: 0;
         overflow: hidden;
-        animation: reveal 1.3s calc(0.55s + var(--i) * 0.14s)
+        animation: reveal 1.3s calc(0.6s + var(--i) * 0.14s)
           cubic-bezier(0.7, 0, 0.2, 1) both;
       }
       .frame img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        filter: brightness(0.9);
-        transition:
-          filter 0.8s,
-          opacity 0.2s;
+        filter: brightness(0.88);
+        transition: filter 0.8s;
         -webkit-user-drag: none;
       }
-      .work:hover .frame img,
+      .work.hot .frame img,
       .work:focus-visible .frame img {
         filter: none;
       }
-      .work.away .frame img {
-        opacity: 0;
+      .work.away .frame {
+        visibility: hidden;
       }
       .work:focus-visible {
         outline: none;
       }
       .work:focus-visible .frame {
         outline: 1px solid var(--ink);
-        outline-offset: 4px;
+        outline-offset: 5px;
       }
 
+      /* Dimension lines with architectural slash ticks. */
       .dim {
         position: absolute;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 9.5px;
-        color: var(--faint);
+        color: #4f4e49;
         letter-spacing: 0.04em;
         pointer-events: none;
-        border-color: #3a3936;
-        transition:
-          color 0.6s,
-          border-color 0.6s;
+        transition: color 0.6s;
         animation: fade 1s calc(1.3s + var(--i, 0) * 0.14s) both;
       }
-      .dim::before {
+      .dim::before,
+      .dim::after {
         position: absolute;
+        width: 9px;
+        height: 1px;
         content: "";
         background: currentColor;
-        opacity: 0.55;
+        transform: rotate(-45deg);
       }
       .dim b {
         position: relative;
-        padding: 0 6px;
+        padding: 0 7px;
         font-weight: 400;
         line-height: 1;
-        background: var(--bg);
       }
       .dim-w {
-        top: -17px;
-        right: 0;
-        left: 0;
-        height: 9px;
-        border-right: 1px solid;
-        border-left: 1px solid;
-      }
-      .dim-w::before {
-        top: 4px;
+        top: -16px;
         right: 0;
         left: 0;
         height: 1px;
+        background:
+          linear-gradient(currentColor, currentColor) center / 100% 1px
+          no-repeat;
+      }
+      .dim-w::before {
+        left: -4px;
+      }
+      .dim-w::after {
+        right: -4px;
       }
       .dim-h {
         top: 0;
-        right: -17px;
+        right: -16px;
         bottom: 0;
-        width: 9px;
-        border-top: 1px solid;
-        border-bottom: 1px solid;
+        width: 1px;
+        background:
+          linear-gradient(currentColor, currentColor) center / 1px 100%
+          no-repeat;
       }
       .dim-h::before {
         top: 0;
+      }
+      .dim-h::after {
         bottom: 0;
-        left: 4px;
-        width: 1px;
       }
       .dim-h b {
-        padding: 6px 0;
+        padding: 7px 0;
         writing-mode: vertical-rl;
       }
-      .work:hover .dim,
       .work.hot .dim {
-        color: #bdb9ad;
-        border-color: #77746c;
+        color: #a9a69c;
       }
 
-      .cap {
-        position: absolute;
-        top: calc(100% + 11px);
-        left: 0;
-        font-size: 10px;
-        line-height: 1.55;
+      /* Numbered tags on the tag line. */
+      .tag {
+        display: flex;
+        align-items: center;
+        animation: fade 1s calc(1.5s + var(--i) * 0.12s) both;
+      }
+      .tag-no {
+        display: grid;
+        flex: none;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        margin-left: -12px;
+        font-size: 9px;
+        color: var(--dim);
+        letter-spacing: 0;
+        background: var(--bg);
+        border: 1px solid #45443f;
+        border-radius: 50%;
+        transition:
+          color 0.4s,
+          background-color 0.4s,
+          border-color 0.4s;
+      }
+      .tag-name {
+        padding: 4px 12px 4px 8px;
+        margin-left: 4px;
         color: var(--dim);
         white-space: nowrap;
-        transition: color 0.5s;
-        animation: fade 1s calc(1.4s + var(--i) * 0.14s) both;
+        transition: color 0.4s;
       }
-      .fig-no {
-        margin-right: 6px;
-        color: var(--faint);
-        transition: color 0.5s;
+      .tag.hot .tag-no {
+        color: var(--bg);
+        background: var(--ink);
+        border-color: var(--ink);
       }
-      .cap-by {
-        display: block;
-        color: var(--faint);
-      }
-      .work:hover .cap,
-      .work:hover .fig-no {
+      .tag.hot .tag-name {
         color: var(--ink);
       }
 
-      /* ---------- footer: ascii strip + title block ---------- */
-      .foot {
+      /* ---------- schedule: columns are the grid's columns ---------- */
+      .schedule {
+        position: relative;
+        margin-top: calc(var(--cell) * 0.25);
+        animation: fade 1.2s 1s both;
+      }
+      .sched-title {
+        display: inline-block;
+        padding: 6px var(--pad);
+        margin-left: 1px;
+      }
+      .row {
         display: grid;
-        grid-template-columns: 9fr 3fr;
-        background: #080807;
-        border-top: 1px solid var(--frame);
-        animation: fade 1.4s 1s both;
+        grid-template-columns: repeat(var(--cols), var(--cell));
+        align-items: baseline;
+        background: var(--bg);
+        border-top: 1px solid var(--line);
+        transition: background-color 0.3s;
       }
-      .strip {
-        display: flex;
+      .row:last-child {
+        border-bottom: 1px solid var(--line);
+      }
+      .row > span {
         min-width: 0;
-        padding: calc(var(--cell) * 0.1) 0 0;
-        overflow: hidden;
+        padding: 15px var(--pad);
+        line-height: 1.45;
+        border-left: 1px solid var(--line);
       }
-      .seg {
-        flex: 1 1 0;
-        min-width: 0;
-        padding-left: 14px;
-        overflow: hidden;
-        font:
-          400 10px / 1.32 "Geist Mono",
-          ui-monospace,
-          monospace;
-        color: #34332f;
-        border-left: 1px dashed #1e1e1c;
+      .row.head > span {
+        padding-top: 10px;
+        padding-bottom: 10px;
+        color: var(--faint);
       }
-      .seg:first-child {
-        border-left: 0;
+      .row:not(.head) {
+        font-size: 14px;
+        font-weight: 300;
+        color: var(--soft);
       }
-      .ln {
-        display: block;
-        white-space: pre;
+      .row .mono {
+        font-size: 10.5px;
       }
-      .seg .t1 {
-        color: #57554f;
-        transition: color 0.6s;
+      .c-no {
+        grid-column: 1 / span 1;
       }
-      .seg .t2 {
-        color: #a8a497;
-        transition: color 0.6s;
+      .c-title {
+        grid-column: 2 / span 3;
       }
-      .seg.hot .t1 {
-        color: #86837a;
+      .c-artist {
+        grid-column: 5 / span 2;
       }
-      .seg.hot .t2 {
-        color: #fffdf4;
+      .c-medium {
+        grid-column: 7 / span 2;
+      }
+      .c-size {
+        grid-column: 9 / span 2;
+      }
+      .c-rights {
+        grid-column: 11 / span 2;
+        border-right: 1px solid var(--line);
+      }
+      .row:not(.head) .c-title {
+        font-size: 17px;
+        font-weight: 400;
+        color: var(--ink);
+        letter-spacing: -0.01em;
+      }
+      .row:not(.head).hot,
+      .row:not(.head):focus-visible {
+        outline: none;
+        background: #0c0c0b;
+      }
+      .row.hot .c-no {
+        color: var(--ink);
       }
 
-      .tb {
+      .foot {
         display: grid;
-        grid-template-rows: repeat(3, 1fr);
-        grid-template-columns: 1fr 1fr;
-        font-size: 9.5px;
-        border-left: 1px solid var(--frame);
+        grid-template-columns: repeat(var(--cols), var(--cell));
+        margin-top: calc(var(--cell) * 0.6);
+        color: var(--faint);
+        animation: fade 1.2s 1.1s both;
       }
-      .tb div {
+      .foot > span {
+        padding: 8px var(--pad);
+        margin-left: 1px;
+      }
+      .foot > span:nth-child(1) {
+        grid-column: 1 / span 4;
+      }
+      .foot > span:nth-child(2) {
+        grid-column: 6 / span 3;
+      }
+      .foot > span:nth-child(3) {
+        grid-column: 10 / span 3;
+      }
+      .scale {
         display: flex;
         gap: 10px;
         align-items: center;
-        min-width: 0;
-        padding: 0 12px;
-        border-bottom: 1px solid var(--row);
-      }
-      .tb div:nth-child(odd):not(.tb-scale) {
-        border-right: 1px solid var(--row);
-      }
-      .tb div:nth-last-child(-n + 2) {
-        border-bottom: 0;
-      }
-      .tb dt {
-        color: var(--faint);
-      }
-      .tb dd {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        color: #bdb9ad;
-        white-space: nowrap;
-      }
-      .tb-scale {
-        grid-column: 1 / -1;
       }
       .bar {
         display: block;
-        width: calc(var(--cell) * var(--pm) * 0.5);
+        width: calc(var(--cell) * var(--pm));
         height: 5px;
         background:
-          linear-gradient(90deg, #77746c 50%, transparent 50%) 0 0 / 50% 100%;
-        border: 1px solid #77746c;
+          linear-gradient(90deg, #5d5b55 50%, transparent 50%) 0 0 / 50% 100%;
+        border: 1px solid #5d5b55;
       }
 
-      /* ---------- detail view ---------- */
+      /* ---------- detail view: same grid, painting in front ---------- */
       .view {
-        --vcell: calc((100vw - 2 * var(--gut)) / 12);
         --p: 0;
         position: fixed;
         inset: 0;
-        z-index: 10;
+        z-index: 4;
         overscroll-behavior: contain;
-        background: rgb(0 0 0 / 0);
-        transition: background-color 0.5s var(--ease);
       }
       .view[hidden] {
         display: none;
       }
-      .view.in {
-        background: rgb(0 0 0 / 1);
+      .view:focus {
+        outline: none;
       }
-      .vgrid {
+      .vsheet {
         position: absolute;
-        inset: 0 var(--gut);
-        pointer-events: none;
-        background:
-          linear-gradient(90deg, #121211 1px, transparent 1px) 0 0 /
-          var(--vcell) 100%,
-          linear-gradient(#0f0f0e 1px, transparent 1px) 0 0 / 100% var(--vcell);
-        border-right: 1px solid #121211;
-        border-left: 1px solid #121211;
-      }
-      .vgrid,
-      .vbar,
-      .detail .info,
-      .detail .dim {
-        opacity: 0;
-        transition: opacity 0.2s;
-      }
-      .view.in .vgrid,
-      .view.in .vbar,
-      .view.in .detail .info,
-      .view.in .detail .dim {
-        opacity: 1;
-        transition: opacity 0.6s 0.3s;
-      }
-      .detail .dim {
-        animation: none;
-      }
-      .vbar {
-        position: absolute;
-        right: var(--gut);
-        left: var(--gut);
-        z-index: 2;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        color: var(--dim);
-      }
-      .vtop {
-        top: 0;
-        height: 64px;
-      }
-      .vbottom {
+        top: var(--strip);
         bottom: 0;
-        justify-content: center;
-        height: 72px;
+        left: 50%;
+        width: calc(var(--cell) * var(--cols));
+        transform: translateX(-50%);
       }
-      .vbtn {
-        padding: 6px 4px;
-        color: var(--dim);
-        transition: color 0.2s;
-      }
-      .vbtn:hover {
-        color: var(--ink);
-      }
-      .vnav {
-        display: flex;
-        gap: 14px;
-        align-items: center;
-        font-variant-numeric: tabular-nums;
-      }
-      .ret {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        align-items: center;
-        color: var(--faint);
-      }
-      .ret-bar {
-        display: block;
-        width: 120px;
-        height: 1px;
-        overflow: hidden;
-        background: #2a2927;
-      }
-      .ret-bar b {
-        display: block;
-        height: 100%;
-        background: var(--ink);
-        transform: scaleX(var(--p));
-        transform-origin: left;
-        transition: transform 0.25s;
-      }
-      .on-touch {
-        display: none;
-      }
-      @media (hover: none) {
-        .on-wheel {
-          display: none;
-        }
-        .on-touch {
-          display: inline;
-        }
-      }
-
       .detail {
         position: absolute;
         inset: 0;
-        transform: translateY(calc(var(--p) * -36px));
+        transform: translateY(calc(var(--p) * -32px));
         transition: transform 0.35s var(--ease);
       }
       .detail[hidden] {
         display: none;
       }
-      .detail .info {
-        position: absolute;
-        top: 120px;
-        left: var(--gut);
-        width: calc(var(--vcell) * 3.4);
-        padding-left: calc(var(--vcell) * 0.3);
-      }
-      .info h2 {
-        margin: 18px 0 12px;
-        font-size: clamp(34px, 3.4vw, 56px);
-        font-weight: 400;
-        line-height: 1;
-        letter-spacing: -0.035em;
-        text-wrap: balance;
-      }
-      .by {
-        font-size: 17px;
-        font-weight: 300;
-        color: #c9c6bb;
-      }
-      .spec {
-        margin-top: 36px;
-        font-size: 10px;
-        border-top: 1px solid #1d1d1b;
-      }
-      .spec div {
-        display: grid;
-        grid-template-columns: 76px 1fr;
-        gap: 12px;
-        padding: 10px 0;
-        border-bottom: 1px solid #1d1d1b;
-      }
-      .spec dt {
-        color: var(--faint);
-      }
-      .spec dd {
-        line-height: 1.5;
-        color: #bdb9ad;
-        text-transform: none;
-        letter-spacing: 0.02em;
-      }
-      .info .btn {
-        margin-top: 28px;
-        font-size: 14px;
-      }
-
       .stage {
         position: absolute;
-        top: 96px;
-        right: calc(var(--gut) + 30px);
-        bottom: 110px;
-        left: calc(var(--gut) + var(--vcell) * 4);
+        top: 52px;
+        right: 26px;
+        bottom: 96px;
+        left: calc(var(--cell) * 3);
         display: grid;
-        place-items: center;
+        align-items: start;
+        justify-items: start;
         container-type: size;
         pointer-events: none;
       }
@@ -1100,28 +996,177 @@ const description =
         height: 100%;
         object-fit: cover;
       }
+      .fig .dim {
+        color: #6d6b64;
+        animation: none;
+      }
       .fig .dim-w {
-        top: -22px;
+        top: -20px;
       }
       .fig .dim-h {
-        right: -22px;
+        right: -20px;
       }
-      .fig .dim b {
-        color: #8b887f;
+      .info {
+        position: absolute;
+        top: 0;
+        left: 1px;
+        width: calc(var(--cell) * 3 - 1px);
+        padding: 52px var(--pad) calc(var(--pad) * 1.5);
+      }
+      .info h2 {
+        margin: 18px 0 10px;
+        font-size: clamp(30px, calc(var(--cell) * 0.4), 52px);
+        font-weight: 400;
+        line-height: 1.02;
+        letter-spacing: -0.035em;
+        text-wrap: balance;
+      }
+      .by {
+        font-size: 16px;
+        font-weight: 300;
+        color: var(--soft);
+      }
+      .spec {
+        margin-top: 30px;
+        border-top: 1px solid var(--line);
+      }
+      .spec div {
+        display: grid;
+        grid-template-columns: 70px 1fr;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .spec dt {
+        padding-top: 2px;
+        font-size: 9.5px;
+        color: var(--faint);
+      }
+      .spec dd {
+        font-size: 13px;
+        font-weight: 300;
+        line-height: 1.45;
+        color: var(--soft);
+      }
+      .orig {
+        display: inline-flex;
+        gap: 8px;
+        padding-bottom: 4px;
+        margin-top: 26px;
+        color: var(--ink);
+        border-bottom: 1px solid #5d5b55;
+        transition: border-color 0.3s;
+      }
+      .orig:hover {
+        border-color: var(--ink);
+      }
+
+      .vbar {
+        position: absolute;
+        right: 0;
+        bottom: 26px;
+        left: 0;
+        display: grid;
+        grid-template-columns: repeat(var(--cols), var(--cell));
+        align-items: center;
+        color: var(--dim);
+      }
+      .vbar > * {
+        padding: 8px var(--pad);
+        margin-left: 1px;
+      }
+      .vb-back {
+        grid-column: 1 / span 2;
+        justify-self: start;
+        transition: color 0.2s;
+      }
+      .vb-back:hover {
+        color: var(--ink);
+      }
+      .vb-ret {
+        display: flex;
+        flex-direction: column;
+        grid-column: 6 / span 2;
+        gap: 9px;
+        align-items: center;
+        justify-self: center;
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .ret-bar {
+        display: block;
+        width: 96px;
+        height: 1px;
+        overflow: hidden;
+        background: #2a2927;
+      }
+      .ret-bar b {
+        display: block;
+        height: 100%;
+        background: var(--ink);
+        transform: scaleX(var(--p));
+        transform-origin: left;
+        transition: transform 0.25s;
+      }
+      .vb-nav {
+        display: flex;
+        grid-column: 11 / span 2;
+        gap: 14px;
+        justify-self: end;
+        font-variant-numeric: tabular-nums;
+      }
+      .vb-nav button {
+        transition: color 0.2s;
+      }
+      .vb-nav button:hover {
+        color: var(--ink);
+      }
+      .on-touch {
+        display: none;
+      }
+      @media (hover: none) {
+        .on-wheel {
+          display: none;
+        }
+        .on-touch {
+          display: inline;
+        }
+      }
+
+      /* fade the detail's lettering in after the painting lands */
+      .info,
+      .vbar,
+      .fig .dim {
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .view.in .info,
+      .view.in .vbar,
+      .view.in .fig .dim {
+        opacity: 1;
+        transition: opacity 0.6s 0.35s;
+      }
+
+      .m-only {
+        display: none;
       }
 
       /* ---------- small screens ---------- */
       @media (max-width: 760px) {
         :root {
           --gut: 16px;
-        }
-        .page {
           --cols: 4;
-          --foot: 2;
+          --pad: 12px;
+          --strip: 40px;
         }
         .sheet {
-          --rows: var(--mrows);
           --pm: var(--mpm);
+        }
+        .d-only {
+          display: none;
+        }
+        .m-only {
+          display: block;
         }
         .at {
           --x: var(--mx);
@@ -1129,73 +1174,90 @@ const description =
           --w: var(--mw);
           --h: var(--mh);
         }
-        .meta {
-          grid-template-columns: 1fr auto;
-          height: 64px;
+        .elev {
+          height: calc(var(--mh-elev) * var(--cell));
         }
-        .meta-mid {
+        .hero-main {
+          grid-column: 1 / -1;
+        }
+        h1 {
+          font-size: 60px;
+        }
+        .hero-meta {
+          grid-column: 1 / -1;
+          margin-top: 8px;
+        }
+        .tag-name {
+          display: none;
+        }
+        .level b {
+          display: none;
+        }
+        .row > span {
+          padding: 12px var(--pad);
+        }
+        .c-no {
+          grid-column: 1 / span 1;
+        }
+        .c-title {
+          grid-column: 2 / span 3;
+          border-right: 1px solid var(--line);
+        }
+        .c-artist,
+        .c-medium,
+        .c-size,
+        .c-rights {
           display: none;
         }
         .foot {
-          grid-template-rows: 1fr 1fr;
           grid-template-columns: 1fr;
         }
-        .tb {
-          border-top: 1px solid var(--frame);
-          border-left: 0;
-        }
-        .seg {
-          padding-left: 8px;
-          font-size: 8.5px;
-        }
-        .hint {
-          display: none;
-        }
-        .hero {
-          padding: 28px 20px;
-        }
-        h1 {
-          font-size: 58px;
-        }
-        .view {
-          --vcell: calc((100vw - 32px) / 4);
+        .foot > span:nth-child(n) {
+          grid-column: 1;
         }
         .stage {
-          top: 76px;
-          right: calc(var(--gut) + 22px);
+          top: 34px;
+          right: 22px;
           bottom: auto;
-          left: var(--gut);
-          height: min(52svh, calc((100vw - 54px) / var(--ar)));
+          left: 0;
+          height: min(
+            48svh,
+            calc((100cqw - 2 * var(--gut) - 22px) / var(--ar))
+          );
         }
-        .detail .info {
-          top: calc(76px + min(52svh, calc((100vw - 54px) / var(--ar))) + 30px);
-          right: var(--gut);
-          left: var(--gut);
-          width: auto;
-          padding: 0;
+        .info {
+          top: calc(
+            34px +
+            min(48svh, calc((100cqw - 2 * var(--gut) - 22px) / var(--ar))) +
+            18px
+          );
+          width: calc(var(--cell) * 4 - 1px);
+          padding-top: var(--pad);
         }
         .info h2 {
           margin: 10px 0 6px;
-          font-size: 32px;
-        }
-        .by {
-          font-size: 15px;
+          font-size: 30px;
         }
         .spec {
-          margin-top: 18px;
+          margin-top: 16px;
         }
         .spec div {
-          grid-template-columns: 64px 1fr;
           padding: 7px 0;
         }
-        .info .btn {
-          margin-top: 18px;
+        .orig {
+          margin-top: 16px;
         }
-        .vtop {
-          height: 56px;
+        .vbar {
+          bottom: 12px;
         }
-        .vbottom {
-          height: 56px;
+        .vb-back {
+          grid-column: 1 / span 2;
+        }
+        .vb-ret {
+          display: none;
+        }
+        .vb-nav {
+          grid-column: 3 / span 2;
         }
       }
 

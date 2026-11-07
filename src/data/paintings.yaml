@@ -25,7 +25,8 @@
   artist: John Martin
   year: "1819"
   medium: Hand-coloured mezzotint (1831), after the 1819 painting
-  size: { h: 60, w: 93, approx: true }
+  # Image area of the 1831 plate, from the British Museum's impression.
+  size: { h: 46.4, w: 71.9 }
   location: Wellcome Collection, London
   rights: Public domain · photo CC BY 4.0 (Wellcome Collection)
   source: Wikimedia Commons

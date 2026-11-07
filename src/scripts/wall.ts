@@ -1,16 +1,16 @@
 /**
- * Behaviour for the wall (src/components/Wall.astro):
- * - drag the sheet (mouse/pen) or swipe sideways on a trackpad; when left
- *   alone it springs back home, a little rubbery
- * - click a painting and it lifts into the detail view; scroll down (or swipe
- *   up, or Esc) and it drops back into its place on the sheet
- * - small live touches: cursor read-out on the rulers, shimmering ASCII strip
+ * Behaviour for the wall (src/components/Wall.astro). The page is a normal
+ * scrolling page; nothing pans.
+ * - click a painting (or its tag, or its schedule row) and it lifts into the
+ *   detail view while the grid stays exactly where it is
+ * - scroll down (swipe up, Esc, ↓) and it drops back into its place
+ * - ← → step through paintings in the detail view
+ * - quiet touches: the axis nearest the cursor lights up, and hovering a
+ *   painting lights its tag, schedule row and axis bubble
  */
 
 const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
-/** How long the sheet waits, untouched, before springing home (ms). */
-const IDLE = 1100;
-/** Scroll distance in the detail view that sends you back to the wall (px). */
+/** Scroll distance in the detail view that puts the painting back (px). */
 const RETURN_AT = 150;
 
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -18,314 +18,79 @@ const narrow = matchMedia("(max-width: 760px)");
 
 const root = document.documentElement;
 const sheet = document.getElementById("sheet") as HTMLElement;
+const content = document.getElementById("content") as HTMLElement;
 const view = document.getElementById("view") as HTMLElement;
-const hud = document.getElementById("hud") as HTMLElement;
 const vnum = document.getElementById("vnum") as HTMLElement;
-const works = [...sheet.querySelectorAll<HTMLAnchorElement>(".work")];
+const works = [...content.querySelectorAll<HTMLAnchorElement>(".work")];
 const details = [...view.querySelectorAll<HTMLElement>(".detail")];
-const ids = works.map((w) => w.dataset.id ?? "");
+const ids = details.map((d) => d.dataset.id ?? "");
+const axes = [...sheet.querySelectorAll<HTMLElement>(".axis")];
+const bubbles = [...sheet.querySelectorAll<HTMLElement>(".bubble")];
 const siteTitle = view.dataset.siteTitle ?? document.title;
 const count = String(works.length).padStart(2, "0");
-
-/* ------------------------------------------------------------------ sheet */
-
-const offset = { x: 0, y: 0 };
-const vel = { x: 0, y: 0 };
-type Mode = "rest" | "drag" | "glide" | "wait" | "spring";
-let mode: Mode = "rest";
-let waitUntil = 0;
-let raf = 0;
-let last = 0;
-
-/** Soft limit: the further you pull, the harder it gets. */
-const RUBBER = 380;
-const rubber = (v: number) => RUBBER * Math.tanh(v / RUBBER);
-
-const paint = () => {
-  sheet.style.translate =
-    offset.x || offset.y ? `${rubber(offset.x)}px ${rubber(offset.y)}px` : "";
-};
-
-const settle = () => {
-  offset.x = 0;
-  offset.y = 0;
-  vel.x = 0;
-  vel.y = 0;
-  mode = "rest";
-};
-
-const loop = (t: number) => {
-  const dt = Math.min(0.034, (t - last) / 1000 || 0.016);
-  last = t;
-  if (mode === "glide") {
-    offset.x += vel.x * dt;
-    offset.y += vel.y * dt;
-    const f = Math.exp(-7 * dt);
-    vel.x *= f;
-    vel.y *= f;
-    if (Math.hypot(vel.x, vel.y) < 12) {
-      mode = "wait";
-      waitUntil = t + IDLE;
-    }
-  } else if (mode === "wait") {
-    if (t >= waitUntil) {
-      mode = "spring";
-      vel.x = 0;
-      vel.y = 0;
-    }
-  } else if (mode === "spring") {
-    // Under-damped spring: overshoots home a touch, then settles.
-    const k = 120;
-    const c = 2 * Math.sqrt(k) * 0.55;
-    for (const a of ["x", "y"] as const) {
-      vel[a] += (-k * offset[a] - c * vel[a]) * dt;
-      offset[a] += vel[a] * dt;
-    }
-    if (Math.hypot(offset.x, offset.y) < 0.3 && Math.hypot(vel.x, vel.y) < 3) {
-      settle();
-    }
-  }
-  paint();
-  raf = mode === "rest" || mode === "drag" ? 0 : requestAnimationFrame(loop);
-};
-
-const run = (m: Mode) => {
-  mode = m;
-  if (reduce && m !== "drag") {
-    settle();
-    paint();
-    return;
-  }
-  if (!raf && m !== "rest" && m !== "drag") {
-    last = performance.now();
-    raf = requestAnimationFrame(loop);
-  }
-};
-
-const stop = () => {
-  cancelAnimationFrame(raf);
-  raf = 0;
-};
-
-interface Press {
-  id: number;
-  moved: boolean;
-  ox: number;
-  oy: number;
-  samples: { t: number; x: number; y: number }[];
-  x: number;
-  y: number;
-}
-let press: Press | null = null;
-let swallowClick = false;
-
-sheet.addEventListener("pointerdown", (e) => {
-  if (e.pointerType === "touch" || e.button !== 0 || current >= 0) {
-    return;
-  }
-  swallowClick = false;
-  stop();
-  mode = "drag";
-  vel.x = 0;
-  vel.y = 0;
-  press = {
-    id: e.pointerId,
-    x: e.clientX,
-    y: e.clientY,
-    ox: offset.x,
-    oy: offset.y,
-    moved: false,
-    samples: [],
-  };
-});
-
-addEventListener("pointermove", (e) => {
-  if (!press || e.pointerId !== press.id) {
-    return;
-  }
-  const dx = e.clientX - press.x;
-  const dy = e.clientY - press.y;
-  if (!press.moved) {
-    if (Math.hypot(dx, dy) < 5) {
-      return;
-    }
-    press.moved = true;
-    sheet.setPointerCapture(e.pointerId);
-    root.classList.add("dragging");
-  }
-  offset.x = press.ox + dx;
-  offset.y = press.oy + dy;
-  paint();
-  press.samples.push({ t: e.timeStamp, x: e.clientX, y: e.clientY });
-  while (press.samples.length > 2 && e.timeStamp - press.samples[0].t > 90) {
-    press.samples.shift();
-  }
-});
-
-const release = (e: PointerEvent) => {
-  if (!press || e.pointerId !== press.id) {
-    return;
-  }
-  const p = press;
-  press = null;
-  if (p.moved) {
-    swallowClick = true;
-    root.classList.remove("dragging");
-    const a = p.samples[0];
-    const b = p.samples.at(-1);
-    if (a && b && b.t > a.t && e.timeStamp - b.t < 60) {
-      vel.x = ((b.x - a.x) / (b.t - a.t)) * 1000;
-      vel.y = ((b.y - a.y) / (b.t - a.t)) * 1000;
-    }
-  }
-  if (!(offset.x || offset.y)) {
-    mode = "rest";
-    return;
-  }
-  waitUntil = performance.now() + IDLE;
-  run(Math.hypot(vel.x, vel.y) > 60 ? "glide" : "wait");
-};
-addEventListener("pointerup", release);
-addEventListener("pointercancel", release);
-
-// A drag that ends over a painting must not open it.
-sheet.addEventListener(
-  "click",
-  (e) => {
-    if (swallowClick) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      swallowClick = false;
-    }
-  },
-  true
-);
-
-/* Swallow the tail of trackpad momentum after returning to the wall, so the
-   page stays exactly where it was. */
-let guardUntil = 0;
-let guardCap = 0;
-const guardWheel = () => {
-  const t = performance.now();
-  guardUntil = t + 350;
-  guardCap = t + 1500;
-};
-
-addEventListener(
-  "wheel",
-  (e) => {
-    const t = performance.now();
-    if (t < guardUntil && t < guardCap) {
-      e.preventDefault();
-      guardUntil = t + 160;
-      return;
-    }
-    if (current >= 0 || e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) {
-      return;
-    }
-    // Sideways swipe: nudge the sheet (and stop the browser's back gesture).
-    e.preventDefault();
-    stop();
-    offset.x -= e.deltaX;
-    vel.x = 0;
-    vel.y = 0;
-    paint();
-    waitUntil = t + IDLE;
-    run("wait");
-  },
-  { passive: false }
-);
-
-/* ------------------------------------------------------------- read-outs */
-
-let aimRaf = 0;
-let aim: PointerEvent | null = null;
-const pad4 = (v: number) => String(Math.max(0, Math.round(v))).padStart(3, "0");
-
-const showAim = () => {
-  aimRaf = 0;
-  if (!aim) {
-    return;
-  }
-  const r = sheet.getBoundingClientRect();
-  const x = aim.clientX - r.left;
-  const y = aim.clientY - r.top;
-  sheet.style.setProperty("--cx", `${x}px`);
-  sheet.style.setProperty("--cy", `${y}px`);
-  const small = narrow.matches;
-  const perMeter = Number(small ? sheet.dataset.mpm : sheet.dataset.dpm);
-  const pxPerCm = ((r.width / (small ? 4 : 12)) * perMeter) / 100;
-  hud.textContent = `x ${pad4(x / pxPerCm)}  y ${pad4(y / pxPerCm)} cm`;
-};
-
-sheet.addEventListener("pointermove", (e) => {
-  aim = e;
-  sheet.classList.add("aim");
-  hud.classList.add("live");
-  if (!aimRaf) {
-    aimRaf = requestAnimationFrame(showAim);
-  }
-});
-sheet.addEventListener("pointerleave", () => {
-  aim = null;
-  sheet.classList.remove("aim");
-  hud.classList.remove("live");
-});
-
-/** Highlight everything tied to painting i: its plot, its strip of ASCII. */
-const hot = (i: number, on: boolean) => {
-  for (const el of sheet.querySelectorAll(`[data-i="${i}"]`)) {
-    el.classList.toggle("hot", on);
-  }
-};
-
-if (!reduce) {
-  const runs = [
-    ...sheet.querySelectorAll<HTMLElement>(".strip [class^='t']"),
-  ].filter((s) => s.textContent?.trim());
-  const original = new Map(runs.map((s) => [s, s.textContent ?? ""]));
-  const swap: Record<string, string> = {
-    "·": ":",
-    ":": "·",
-    "-": "+",
-    "+": "*",
-    "*": "+",
-    o: "*",
-  };
-  const put = (s: HTMLElement, i: number, ch: string) => {
-    const t = s.textContent ?? "";
-    s.textContent = t.slice(0, i) + ch + t.slice(i + 1);
-  };
-  setInterval(() => {
-    if (document.hidden || current >= 0 || runs.length === 0) {
-      return;
-    }
-    for (let k = 0; k < 3; k++) {
-      const s = runs[Math.floor(Math.random() * runs.length)];
-      const text = original.get(s) ?? "";
-      const i = Math.floor(Math.random() * text.length);
-      const ch = text[i];
-      if (!ch || ch === " ") {
-        continue;
-      }
-      put(s, i, swap[ch] ?? "·");
-      setTimeout(() => put(s, i, ch), 450 + Math.random() * 700);
-    }
-  }, 130);
-}
-
-/* ------------------------------------------------------------ detail view */
 
 let current = Number(view.dataset.open ?? -1);
 let busy = false;
 
+/* ----------------------------------------------------------- grid touches */
+
+const mark = (list: HTMLElement[], cls: string, k: number) => {
+  for (const [j, el] of list.entries()) {
+    el.classList.toggle(cls, j === k);
+  }
+};
+
+/** The axis a painting hangs on, for the current layout. */
+const axisOf = (i: number) => {
+  const w = works[i];
+  return Math.round(Number(narrow.matches ? w.dataset.maxis : w.dataset.axis));
+};
+
+let aimRaf = 0;
+let aimX = -1;
+const showAim = () => {
+  aimRaf = 0;
+  if (aimX < 0 || current >= 0) {
+    mark(axes, "near", -1);
+    mark(bubbles, "near", -1);
+    return;
+  }
+  const r = sheet.getBoundingClientRect();
+  const cols = narrow.matches ? 4 : 12;
+  const k = Math.round(((aimX - r.left) / r.width) * cols);
+  const near = k >= 0 && k <= cols ? k : -1;
+  mark(axes, "near", near);
+  mark(bubbles, "near", near);
+};
+const aim = (x: number) => {
+  aimX = x;
+  if (!aimRaf) {
+    aimRaf = requestAnimationFrame(showAim);
+  }
+};
+addEventListener("pointermove", (e) => {
+  if (e.pointerType !== "touch") {
+    aim(e.clientX);
+  }
+});
+document.addEventListener("pointerleave", () => aim(-1));
+
+/** Light everything tied to painting i: painting, tag, schedule row, bubble. */
+const hot = (i: number, on: boolean) => {
+  for (const el of content.querySelectorAll(`[data-i="${i}"]`)) {
+    el.classList.toggle("hot", on);
+  }
+  mark(bubbles, "lit", on ? axisOf(i) : -1);
+};
+
+/* ------------------------------------------------------------ detail view */
+
 const frameOf = (i: number) => works[i].querySelector(".frame") as HTMLElement;
 const figOf = (i: number) => details[i].querySelector(".fig") as HTMLElement;
-const bigImg = (i: number) => details[i].querySelector("img");
 
 /** Start fetching painting i's large image. */
 const warm = (i: number) => {
-  const img = bigImg(i);
+  const img = details[i].querySelector("img");
   if (img && img.loading !== "eager") {
     img.loading = "eager";
   }
@@ -355,13 +120,35 @@ const showDetail = (i: number) => {
 const progress = (p: number) =>
   view.style.setProperty("--p", String(Math.max(0, Math.min(1, p))));
 
+/* Swallow the tail of trackpad momentum after putting a painting back, so
+   the page stays exactly where it was. */
+let guardUntil = 0;
+let guardCap = 0;
+const guardWheel = () => {
+  const t = performance.now();
+  guardUntil = t + 350;
+  guardCap = t + 1500;
+};
+addEventListener(
+  "wheel",
+  (e) => {
+    const t = performance.now();
+    if (current < 0 && t < guardUntil && t < guardCap) {
+      e.preventDefault();
+      guardUntil = t + 160;
+    }
+  },
+  { passive: false }
+);
+
 const open = (i: number, push = true) => {
   if (busy || current >= 0) {
     return;
   }
   busy = true;
   current = i;
-  stop();
+  hot(i, false);
+  aim(-1);
   warm(i);
   const from = frameOf(i).getBoundingClientRect();
   showDetail(i);
@@ -377,16 +164,14 @@ const open = (i: number, push = true) => {
     history.pushState({ wall: true }, "", `/${ids[i]}/`);
   }
   label(i);
-  (view.querySelector("[data-close]") as HTMLElement | null)?.focus({
-    preventScroll: true,
-  });
+  view.focus({ preventScroll: true });
   if (reduce) {
     busy = false;
     return;
   }
   fig
     .animate([{ transform: flip(from, to) }, { transform: "none" }], {
-      duration: 780,
+      duration: 760,
       easing: EASE,
     })
     .finished.catch(() => undefined)
@@ -405,10 +190,10 @@ const close = () => {
   const from = fig.getBoundingClientRect();
   const to = frameOf(i).getBoundingClientRect();
   view.classList.remove("in");
+  root.classList.remove("is-open");
   label(-1);
   const done = () => {
     view.hidden = true;
-    root.classList.remove("is-open");
     works[i].classList.remove("away");
     for (const a of fig.getAnimations()) {
       a.cancel();
@@ -418,10 +203,6 @@ const close = () => {
     busy = false;
     guardWheel();
     works[i].focus({ preventScroll: true });
-    if (offset.x || offset.y) {
-      waitUntil = performance.now() + IDLE / 2;
-      run("wait");
-    }
   };
   if (reduce) {
     done();
@@ -437,7 +218,7 @@ const close = () => {
     .then(done);
 };
 
-/** Go back to the wall, through history when we came from it. */
+/** Back to the wall, through history when we came from it. */
 const leave = () => {
   if (current < 0 || busy) {
     return;
@@ -507,50 +288,45 @@ addEventListener("popstate", () => {
   }
 });
 
-for (const [i, w] of works.entries()) {
-  w.addEventListener("click", (e) => {
+/* --------------------------------------------------------------- wiring */
+
+for (const el of content.querySelectorAll<HTMLAnchorElement>("a[data-i]")) {
+  const i = Number(el.dataset.i);
+  el.addEventListener("click", (e) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
       return;
     }
     e.preventDefault();
     open(i);
   });
-  w.addEventListener("pointerenter", () => {
+  el.addEventListener("pointerenter", () => {
     warm(i);
     hot(i, true);
   });
-  w.addEventListener("pointerleave", () => hot(i, false));
-  w.addEventListener("focus", () => hot(i, true));
-  w.addEventListener("blur", () => hot(i, false));
+  el.addEventListener("pointerleave", () => hot(i, false));
+  el.addEventListener("focus", () => hot(i, true));
+  el.addEventListener("blur", () => hot(i, false));
 }
 
-for (const b of document.querySelectorAll<HTMLElement>(
-  "[data-open]:not(#view)"
-)) {
-  b.addEventListener("click", (e) => {
-    e.preventDefault();
-    open(Number(b.dataset.open));
-  });
-}
 for (const b of view.querySelectorAll<HTMLElement>("[data-close]")) {
   b.addEventListener("click", leave);
 }
 for (const b of view.querySelectorAll<HTMLElement>("[data-step]")) {
   b.addEventListener("click", () => step(Number(b.dataset.step)));
 }
-// Clicking empty space around the painting also returns to the wall.
+// Clicking empty space around the painting also puts it back.
 view.addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
   if (
     t === view ||
-    t.classList.contains("detail") ||
-    t.classList.contains("stage")
+    t.classList.contains("vsheet") ||
+    t.classList.contains("detail")
   ) {
     leave();
   }
 });
 
-// Scroll down to return.
+// Scroll down to put it back.
 let pull = 0;
 let pullTimer = 0;
 view.addEventListener(
@@ -576,7 +352,7 @@ view.addEventListener(
   { passive: false }
 );
 
-// Swipe up to return (touch).
+// Swipe up to put it back (touch).
 let touchY = -1;
 view.addEventListener(
   "touchstart",

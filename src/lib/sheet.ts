@@ -1,8 +1,9 @@
 /**
- * Lays paintings out on the wall's grid. Everything is measured in grid cells.
- * Paintings keep their real relative size (`perMeter` cells per metre) and
- * snap to half-cell lines, filling the sheet top to bottom and alternating
- * between left- and right-hand placement so the sheet reads as composed.
+ * Hangs the paintings on walls, drawn as architectural elevations. Everything
+ * is measured in grid cells. Paintings keep their real relative size
+ * (`perMeter` cells per metre), are hung with their centres on the museum line
+ * (145 cm above the floor) and centred on grid axes. A wall fills left to
+ * right; when the next painting doesn't fit, a new wall starts below.
  */
 import type { Painting } from "@/lib/paintings";
 
@@ -13,21 +14,45 @@ export interface Box {
   y: number;
 }
 
-interface Spec {
+export interface Spec {
   cols: number;
-  /** Rows reserved at the bottom for the footer. */
-  foot: number;
-  /** Area kept free for the title block. */
-  hero: Box;
-  /** Empty space kept at the left and right edges. */
+  /** Space between neighbouring paintings (cells). */
+  gap: number;
+  /** Space kept free at the sheet's left and right edges (cells). */
   margin: number;
   perMeter: number;
+  /** Painting centres snap to multiples of this (cells). */
+  step: number;
 }
 
-export type Sheet = Spec & { rows: number; boxes: Box[]; footer: Box };
+export interface WallRow {
+  datum: number;
+  floor: number;
+  /** Height of the tag line (cells, from the elevation's top). */
+  tags: number;
+  top: number;
+}
 
-/** Packing resolution: half cells. */
-const R = 2;
+export interface Hung extends Box {
+  /** Centre line (cells from the left). */
+  cx: number;
+  wall: number;
+}
+
+export interface Elevation {
+  height: number;
+  hung: Hung[];
+  walls: WallRow[];
+}
+
+/** Hanging height of a painting's centre, in metres. */
+export const HANG = 1.45;
+const HEADROOM = 0.32;
+/** Room above each wall for its label (cells). */
+const LABEL = 0.6;
+/** Room below each floor line: hatching plus breathing space (cells). */
+const AFTER = 0.9;
+
 const SIZE_IN_MEDIUM = /(\d+(?:\.\d+)?)\s*[×x]\s*(\d+(?:\.\d+)?)\s*cm/;
 
 /** Real size in cm: explicit `size`, else parsed from `medium`, else 100 cm wide. */
@@ -42,94 +67,83 @@ export const sizeOf = (p: Painting) => {
   return { h: (100 * p.image.height) / p.image.width, w: 100, approx: true };
 };
 
-/** `items` are drawn sizes in metres (width from the real size, height from the image's aspect). */
-export const layout = (
-  items: { w: number; h: number }[],
-  spec: Spec
-): Sheet => {
-  const width = spec.cols * R;
-  const taken: boolean[][] = [];
-  const isFree = (x: number, y: number, w: number, h: number) => {
-    for (let j = y; j < y + h; j++) {
-      for (let i = x; i < x + w; i++) {
-        if (taken[j]?.[i]) {
-          return false;
-        }
-      }
-    }
-    return true;
-  };
-  const take = (x: number, y: number, w: number, h: number) => {
-    for (let j = Math.max(0, y); j < y + h; j++) {
-      taken[j] ??= [];
-      for (let i = Math.max(0, x); i < x + w; i++) {
-        taken[j][i] = true;
-      }
-    }
-  };
-  // Reserve a box plus a half-cell gutter around it (a full cell below, for captions).
-  const reserve = (x: number, y: number, w: number, h: number) =>
-    take(x - 1, y - 1, w + 2, h + 3);
+interface Item {
+  cx: number;
+  h: number;
+  i: number;
+  w: number;
+}
 
-  const { hero } = spec;
-  reserve(hero.x * R, hero.y * R, Math.ceil(hero.w * R), Math.ceil(hero.h * R));
-  const lo = Math.round(spec.margin * R);
-  const hi = width - lo;
-  let bottom = hero.y + hero.h;
-
-  const boxes = items.map((item, n) => {
-    let w = item.w * spec.perMeter;
-    let h = item.h * spec.perMeter;
-    const room = (hi - lo) / R;
-    if (w > room) {
-      h *= room / w;
-      w = room;
+/** Splits paintings into walls and picks each one's centre axis. */
+const rowsOf = (items: { w: number; h: number }[], s: Spec) => {
+  const rows: Item[][] = [];
+  let row: Item[] = [];
+  let right = s.margin - s.gap;
+  const centreAfter = (w: number) =>
+    Math.ceil((right + s.gap + w / 2) / s.step - 1e-6) * s.step;
+  for (const [i, it] of items.entries()) {
+    const room = s.cols - 2 * s.margin;
+    const k = Math.min(1, room / (it.w * s.perMeter));
+    const w = it.w * s.perMeter * k;
+    const h = it.h * s.perMeter * k;
+    let cx = centreAfter(w);
+    if (row.length > 0 && cx + w / 2 > s.cols - s.margin + 1e-6) {
+      rows.push(row);
+      row = [];
+      right = s.margin - s.gap;
+      cx = centreAfter(w);
     }
-    const wu = Math.ceil(w * R - 1e-6);
-    const hu = Math.ceil(h * R - 1e-6);
-    const fromRight = n % 2 === 1;
-    // Candidate columns: prefer an edge that sits on a full cell line.
-    const xs: number[] = [];
-    for (let x = lo; x + wu <= hi; x++) {
-      xs.push(x);
+    row.push({ i, cx, w, h });
+    right = cx + w / 2;
+  }
+  if (row.length > 0) {
+    rows.push(row);
+  }
+  // Centre each wall on the sheet, keeping centres on whole steps.
+  for (const r of rows) {
+    const first = r[0];
+    const last = r.at(-1) ?? first;
+    const leftSpace = first.cx - first.w / 2;
+    const rightSpace = s.cols - (last.cx + last.w / 2);
+    const shift = Math.trunc((rightSpace - leftSpace) / 2 / s.step) * s.step;
+    for (const p of r) {
+      p.cx += shift;
     }
-    const edge = (x: number) => (fromRight ? x + wu : x);
-    const ordered = [
-      ...xs.filter((x) => edge(x) % R === 0),
-      ...xs.filter((x) => edge(x) % R !== 0),
-    ];
-    if (fromRight) {
-      ordered.sort(
-        (a, b) => Number(edge(a) % R !== 0) - Number(edge(b) % R !== 0) || b - a
-      );
-    }
-    for (let y = Math.round(hero.y * R); ; y++) {
-      const x = ordered.find((c) => isFree(c, y, wu, hu));
-      if (x !== undefined) {
-        reserve(x, y, wu, hu);
-        bottom = Math.max(bottom, y / R + h);
-        return { x: fromRight ? (x + wu) / R - w : x / R, y: y / R, w, h };
-      }
-    }
-  });
-
-  const rows = Math.ceil(bottom + 0.8) + spec.foot;
-  return {
-    ...spec,
-    rows,
-    boxes,
-    footer: { x: 0, y: rows - spec.foot, w: spec.cols, h: spec.foot },
-  };
+  }
+  return rows;
 };
 
-/** The whole cells a box touches, for drawing its outline on the grid. */
-export const plotOf = (b: Box): Box => {
-  const x = Math.floor(b.x + 1e-6);
-  const y = Math.floor(b.y + 1e-6);
-  return {
-    x,
-    y,
-    w: Math.ceil(b.x + b.w - 1e-6) - x,
-    h: Math.ceil(b.y + b.h - 1e-6) - y,
-  };
+/** `items` are drawn sizes in metres (real width; height from the image's aspect). */
+export const hang = (items: { w: number; h: number }[], s: Spec): Elevation => {
+  const walls: WallRow[] = [];
+  const hung: Hung[] = [];
+  let top = 0;
+  for (const [wall, r] of rowsOf(items, s).entries()) {
+    // Height of each centre above the floor; very tall works go higher.
+    const centre = (p: Item) =>
+      Math.max(HANG * s.perMeter, p.h / 2 + 0.3 * s.perMeter);
+    const height =
+      Math.max(...r.map((p) => centre(p) + p.h / 2)) + HEADROOM * s.perMeter;
+    const floor = top + LABEL + height;
+    const lowest = Math.min(...r.map((p) => centre(p) - p.h / 2));
+    walls.push({
+      top,
+      floor,
+      datum: floor - HANG * s.perMeter,
+      tags: floor - Math.max(0.35, lowest - 0.5),
+    });
+    for (const p of r) {
+      hung.push({
+        x: p.cx - p.w / 2,
+        y: floor - centre(p) - p.h / 2,
+        w: p.w,
+        h: p.h,
+        cx: p.cx,
+        wall,
+      });
+    }
+    top = floor + AFTER;
+  }
+  // `hung` is in painting order because rows are filled in order.
+  return { walls, hung, height: top };
 };

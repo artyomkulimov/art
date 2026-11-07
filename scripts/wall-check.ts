@@ -1,6 +1,6 @@
 /**
- * Walks through the wall: load, hover, drag + spring back, open a painting,
- * scroll back, direct link, mobile. Screenshots go to /tmp/wall-check/.
+ * Walks through the wall: load, hover, open a painting,
+ * scroll back, direct link, mobile. Screenshots go to $OUT (default /tmp/wall-check-claude/).
  *
  *   bun scripts/wall-check.ts [--base http://127.0.0.1:4321]
  */
@@ -11,7 +11,7 @@ const args = process.argv.slice(2);
 const base = args.includes("--base")
   ? args[args.indexOf("--base") + 1]
   : "http://127.0.0.1:4321";
-const out = "/tmp/wall-check";
+const out = process.env.OUT ?? "/tmp/wall-check-claude";
 mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch();
@@ -24,13 +24,23 @@ const watch = (page: import("playwright").Page) => {
   );
 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Whole-page shot via a tall viewport (full-page capture drops layers in headless). */
+const tall = async (pg: import("playwright").Page, path: string) => {
+  const vp = pg.viewportSize() ?? { width: 1440, height: 900 };
+  const h = await pg.evaluate(() => document.documentElement.scrollHeight);
+  await pg.setViewportSize({ width: vp.width, height: h });
+  await sleep(400);
+  await pg.screenshot({ path });
+  await pg.setViewportSize(vp);
+  await sleep(200);
+};
 
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 watch(page);
 await page.goto(`${base}/`, { waitUntil: "networkidle", timeout: 120_000 });
 await sleep(2600);
 await page.screenshot({ path: `${out}/01-home.png` });
-await page.screenshot({ path: `${out}/02-full.png`, fullPage: true });
+await tall(page, `${out}/02-full.png`);
 
 const box = await page.locator(".work").nth(0).boundingBox();
 if (!box) {
@@ -40,31 +50,12 @@ await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 await sleep(700);
 await page.screenshot({ path: `${out}/03-hover.png` });
 
-// drag the sheet from an empty spot
-await page.mouse.move(300, 820);
-await page.mouse.down();
-for (let k = 1; k <= 20; k++) {
-  await page.mouse.move(300 + k * 12, 820 - k * 5);
-  await sleep(16);
-}
-await page.mouse.up();
-await sleep(200);
-await page.screenshot({ path: `${out}/04-dragged.png` });
-console.log(
-  "offset after drag:",
-  await page.evaluate(
-    () => (document.getElementById("sheet") as HTMLElement).style.translate
-  )
-);
-await sleep(2600);
-console.log(
-  "offset after idle:",
-  JSON.stringify(
-    await page.evaluate(
-      () => (document.getElementById("sheet") as HTMLElement).style.translate
-    )
-  )
-);
+// hover a schedule row
+await page.locator(".row[data-i='1']").hover();
+await sleep(600);
+await tall(page, `${out}/04-row-hover.png`);
+await page.evaluate(() => scrollTo(0, 0));
+await sleep(300);
 
 // open a painting
 await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -113,7 +104,7 @@ const mobile = await browser.newPage({
 watch(mobile);
 await mobile.goto(`${base}/`, { waitUntil: "networkidle", timeout: 120_000 });
 await sleep(2600);
-await mobile.screenshot({ path: `${out}/11-mobile.png`, fullPage: true });
+await tall(mobile, `${out}/11-mobile.png`);
 await mobile.goto(`${base}/pandemonium/`, {
   waitUntil: "networkidle",
   timeout: 120_000,

@@ -18,7 +18,13 @@ const paintings = defineCollection({
       year: z.string(),
       medium: z.string(),
       /** Real size in cm, when `medium` doesn't state it. */
-      size: z.object({ h: z.number(), w: z.number(), approx: z.boolean().default(false) }).optional(),
+      size: z
+        .object({
+          h: z.number(),
+          w: z.number(),
+          approx: z.boolean().default(false),
+        })
+        .optional(),
       location: z.string(),
       rights: z.string(),
       source: z.string(),
