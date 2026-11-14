@@ -10,8 +10,6 @@
   },
   "dependencies": {
     "@astrojs/vercel": "11.0.20",
-    "@fontsource/cormorant-garamond": "^5.2.0",
-    "@fontsource/dm-sans": "^5.2.0",
     "astro": "6.2.2"
   },
   "devDependencies": {

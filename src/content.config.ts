@@ -31,6 +31,8 @@ const paintings = defineCollection({
       original: z.url(),
       /** Why this painting is in the collection. */
       story: z.string().optional(),
+      /** Where the story comes from, credited under it. */
+      storyFrom: z.object({ name: z.string(), url: z.url() }).optional(),
       image: image(),
       palette: z.array(z.string()).min(1),
       details: z.array(detail).default([]),

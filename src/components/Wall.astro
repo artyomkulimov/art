@@ -292,6 +292,14 @@ const description = opened
                   {p.artist}, {p.year}
                 </p>
                 {p.story && <p class="story">{p.story}</p>}
+                {p.storyFrom && (
+                  <p class="mono credit">
+                    story adapted from{" "}
+                    <a href={p.storyFrom.url} target="_blank" rel="noopener">
+                      {p.storyFrom.name} <span aria-hidden="true">↗</span>
+                    </a>
+                  </p>
+                )}
                 <dl class="spec">
                   <div>
                     <dt class="mono">medium</dt>
@@ -994,6 +1002,21 @@ const description = opened
         line-height: 1.55;
         color: var(--soft);
         text-wrap: pretty;
+      }
+      .credit {
+        margin-top: 10px;
+        color: var(--faint);
+      }
+      .credit a {
+        color: var(--soft);
+        border-bottom: 1px solid var(--line);
+        transition:
+          color 0.3s,
+          border-color 0.3s;
+      }
+      .credit a:hover {
+        color: var(--ink);
+        border-color: var(--ink);
       }
       .spec {
         margin-top: 26px;
